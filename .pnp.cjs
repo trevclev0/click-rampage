@@ -36,6 +36,7 @@ const RAW_RUNTIME_STATE =
           ["eslint-plugin-react-hooks", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:5.2.0"],\
           ["eslint-plugin-react-refresh", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:0.4.19"],\
           ["globals", "npm:15.15.0"],\
+          ["husky", "npm:9.1.7"],\
           ["react", "npm:19.1.0"],\
           ["react-dom", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:19.1.0"],\
           ["typescript", "patch:typescript@npm%3A5.7.3#optional!builtin<compat/typescript>::version=5.7.3&hash=5786d5"],\
@@ -1313,6 +1314,7 @@ const RAW_RUNTIME_STATE =
           ["eslint-plugin-react-hooks", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:5.2.0"],\
           ["eslint-plugin-react-refresh", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:0.4.19"],\
           ["globals", "npm:15.15.0"],\
+          ["husky", "npm:9.1.7"],\
           ["react", "npm:19.1.0"],\
           ["react-dom", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:19.1.0"],\
           ["typescript", "patch:typescript@npm%3A5.7.3#optional!builtin<compat/typescript>::version=5.7.3&hash=5786d5"],\
@@ -1922,6 +1924,15 @@ const RAW_RUNTIME_STATE =
           ["agent-base", "npm:7.1.3"],\
           ["debug", "virtual:9310e910a96f055c7aceb5045d2a053665adbd932f55922395f6e6a8677c17d080a22ba7d5b06705026a3e0930b878563b55a01608cafa10ecf484910b771955#npm:4.4.0"],\
           ["https-proxy-agent", "npm:7.0.6"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["husky", [\
+      ["npm:9.1.7", {\
+        "packageLocation": "../../.yarn/berry/cache/husky-npm-9.1.7-5b02eaabc4-10c0.zip/node_modules/husky/",\
+        "packageDependencies": [\
+          ["husky", "npm:9.1.7"]\
         ],\
         "linkType": "HARD"\
       }]\
