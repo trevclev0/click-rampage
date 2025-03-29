@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+exec < /dev/tty && yarn dlx commitizen --hook || true
