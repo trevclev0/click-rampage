@@ -33,6 +33,7 @@ const RAW_RUNTIME_STATE =
           ["@vitejs/plugin-react-swc", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:3.8.1"],\
           ["click-rampage", "workspace:."],\
           ["commitizen", "npm:4.3.1"],\
+          ["cz-conventional-changelog", "npm:3.3.0"],\
           ["eslint", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:9.23.0"],\
           ["eslint-plugin-react-hooks", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:5.2.0"],\
           ["eslint-plugin-react-refresh", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:0.4.19"],\
@@ -1551,6 +1552,7 @@ const RAW_RUNTIME_STATE =
           ["@vitejs/plugin-react-swc", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:3.8.1"],\
           ["click-rampage", "workspace:."],\
           ["commitizen", "npm:4.3.1"],\
+          ["cz-conventional-changelog", "npm:3.3.0"],\
           ["eslint", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:9.23.0"],\
           ["eslint-plugin-react-hooks", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:5.2.0"],\
           ["eslint-plugin-react-refresh", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:0.4.19"],\
