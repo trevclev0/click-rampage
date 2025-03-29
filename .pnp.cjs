@@ -28,7 +28,6 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./",\
         "packageDependencies": [\
           ["@eslint/js", "npm:9.23.0"],\
-          ["@swc/core", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:1.11.13"],\
           ["@types/react", "npm:19.0.12"],\
           ["@types/react-dom", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:19.0.4"],\
           ["@vitejs/plugin-react-swc", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:3.8.1"],\
@@ -794,16 +793,16 @@ const RAW_RUNTIME_STATE =
     ]],\
     ["@swc/core", [\
       ["npm:1.11.13", {\
-        "packageLocation": "./.yarn/unplugged/@swc-core-virtual-5ec0ec15c7/node_modules/@swc/core/",\
+        "packageLocation": "./.yarn/unplugged/@swc-core-virtual-e589d45e33/node_modules/@swc/core/",\
         "packageDependencies": [\
           ["@swc/core", "npm:1.11.13"]\
         ],\
         "linkType": "SOFT"\
       }],\
-      ["virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:1.11.13", {\
-        "packageLocation": "./.yarn/unplugged/@swc-core-virtual-5ec0ec15c7/node_modules/@swc/core/",\
+      ["virtual:0a7c4684395baf8d9c279d1b6a6aff29f45e2b6cfe72b0a9028ccd68717f656dd9defc3878d632fbc22acad7cee09aa9473de50db64bc0b5882149d8283cc9cb#npm:1.11.13", {\
+        "packageLocation": "./.yarn/unplugged/@swc-core-virtual-e589d45e33/node_modules/@swc/core/",\
         "packageDependencies": [\
-          ["@swc/core", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:1.11.13"],\
+          ["@swc/core", "virtual:0a7c4684395baf8d9c279d1b6a6aff29f45e2b6cfe72b0a9028ccd68717f656dd9defc3878d632fbc22acad7cee09aa9473de50db64bc0b5882149d8283cc9cb#npm:1.11.13"],\
           ["@swc/core-darwin-arm64", "npm:1.11.13"],\
           ["@swc/core-darwin-x64", "npm:1.11.13"],\
           ["@swc/core-linux-arm-gnueabihf", "npm:1.11.13"],\
@@ -1205,7 +1204,7 @@ const RAW_RUNTIME_STATE =
       ["virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:3.8.1", {\
         "packageLocation": "./.yarn/__virtual__/@vitejs-plugin-react-swc-virtual-0a7c468439/3/.yarn/berry/cache/@vitejs-plugin-react-swc-npm-3.8.1-68d4bcd3e1-10c0.zip/node_modules/@vitejs/plugin-react-swc/",\
         "packageDependencies": [\
-          ["@swc/core", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:1.11.13"],\
+          ["@swc/core", "virtual:0a7c4684395baf8d9c279d1b6a6aff29f45e2b6cfe72b0a9028ccd68717f656dd9defc3878d632fbc22acad7cee09aa9473de50db64bc0b5882149d8283cc9cb#npm:1.11.13"],\
           ["@types/vite", null],\
           ["@vitejs/plugin-react-swc", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:3.8.1"],\
           ["vite", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:6.2.3"]\
@@ -1547,7 +1546,6 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./",\
         "packageDependencies": [\
           ["@eslint/js", "npm:9.23.0"],\
-          ["@swc/core", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:1.11.13"],\
           ["@types/react", "npm:19.0.12"],\
           ["@types/react-dom", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:19.0.4"],\
           ["@vitejs/plugin-react-swc", "virtual:d0434cb53792dcc6a25754831943226e7eb526771ffab4c10f5f5fdbe074e5606129c111d18300b05677f6b6fdb7c2543544086106476176a2368bac73444a39#npm:3.8.1"],\
