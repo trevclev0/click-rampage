@@ -7,9 +7,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import shopifyEslintPlugin from '@shopify/eslint-plugin';
 
 export default tseslint.config(
-  { ignores: ['dist', '.yarn', '.pnp.*'] },
+  { ignores: ['dist', '.yarn', '.pnp.*', 'vite-env.d.ts'] },
   {
-    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    extends: [...shopifyEslintPlugin.configs.esnext, js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2020,
@@ -27,5 +27,4 @@ export default tseslint.config(
       ],
     },
   },
-  ...shopifyEslintPlugin.configs.esnext
 )
