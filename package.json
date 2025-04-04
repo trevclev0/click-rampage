@@ -18,15 +18,15 @@
   "devDependencies": {
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
-    "@eslint/js": "^9.23.0",
+    "@eslint/js": "^9.24.0",
     "@shopify/eslint-plugin": "^48.0.2",
     "@types/jest": "^29.5.14",
-    "@types/react": "^19.0.12",
-    "@types/react-dom": "^19.0.4",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.1",
     "@vitejs/plugin-react-swc": "^3.8.1",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
-    "eslint": "^9.23.0",
+    "eslint": "^9.24.0",
     "eslint-import-resolver-node": "^0.3.9",
     "eslint-import-resolver-typescript": "^4.3.1",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -37,8 +37,8 @@
     "ts-jest": "^29.3.1",
     "ts-node": "^10.9.2",
     "typescript": "~5.8.2",
-    "typescript-eslint": "^8.28.0",
-    "vite": "^6.2.3"
+    "typescript-eslint": "^8.29.0",
+    "vite": "^6.2.5"
   },
   "packageManager": "yarn@4.8.0+sha512.85ec3149b1ec48f47c2690e13b29197a8a84b09c2c936cc596dddfb49c517e3bc3b1881ec52b5d35ca4b7c437c3f0daae3a80e39438c93bbcc5fcece2df5f15a"
 }
