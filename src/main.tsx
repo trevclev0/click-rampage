@@ -10,5 +10,5 @@ const appRoot = document.getElementById('root') as HTMLElement;
 createRoot(appRoot).render(
   <StrictMode>
     <App />
-  </StrictMode>,
+  </StrictMode>
 )
