@@ -1,9 +1,15 @@
 import { exports } from "cloudflare:workers";
+import { defaultPlayerName } from "@shared/player";
+import { derivePlayerId } from "@worker/middleware/player";
 import { connect, ORIGIN } from "@worker/test-utils/socket";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
-const PLAYER = "3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b";
-const cookie = (id: string) => ({ Cookie: `cr_player=${id}` });
+const TOKEN = crypto.randomUUID();
+let PLAYER: string;
+beforeAll(async () => {
+  PLAYER = await derivePlayerId(TOKEN);
+});
+const cookie = (token: string) => ({ Cookie: `cr_player=${token}` });
 
 describe("GET /api/ws", () => {
   it("returns 426 without an Upgrade header", async () => {
@@ -25,12 +31,12 @@ describe("GET /api/ws", () => {
   });
 
   it("welcomes the player with themselves in the online list", async () => {
-    const socket = await connect(cookie(PLAYER));
+    const socket = await connect(cookie(TOKEN));
 
     const welcome = await socket.next();
     expect(welcome).toMatchObject({
       type: "welcome",
-      you: { id: PLAYER, name: "Player 3f2b" },
+      you: { id: PLAYER, name: defaultPlayerName(PLAYER) },
     });
     expect(welcome.type === "welcome" && welcome.online).toContainEqual(
       expect.objectContaining({ id: PLAYER }),
@@ -39,15 +45,15 @@ describe("GET /api/ws", () => {
 
   it("ignores a spoofed player header from the client", async () => {
     const socket = await connect({
-      ...cookie(PLAYER),
-      "x-click-rampage-player": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ...cookie(TOKEN),
+      "x-click-rampage-player": "a".repeat(32),
     });
 
     expect(await socket.next()).toMatchObject({ you: { id: PLAYER } });
   });
 
   it("answers ping with pong", async () => {
-    const socket = await connect(cookie(PLAYER));
+    const socket = await connect(cookie(TOKEN));
     await socket.next(); // welcome
 
     socket.send({ type: "ping", t: 42 });
@@ -56,7 +62,7 @@ describe("GET /api/ws", () => {
   });
 
   it("reports invalid messages and keeps the socket open", async () => {
-    const socket = await connect(cookie(PLAYER));
+    const socket = await connect(cookie(TOKEN));
     await socket.next(); // welcome
 
     socket.send("not json");
