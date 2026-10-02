@@ -7,5 +7,7 @@ export type AppEnv = {
   Bindings: Env;
   Variables: {
     requestId: string;
+    /** Server-issued anonymous player id (see middleware/player.ts). */
+    playerId: string;
   };
 };
