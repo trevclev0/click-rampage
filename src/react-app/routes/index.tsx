@@ -9,10 +9,9 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   return (
     <section className={styles.page}>
-      <h1 className={styles.title}>cf-starter</h1>
+      <h1 className={styles.title}>Click Rampage</h1>
       <p className={styles.lead}>
-        React + Hono on a single Cloudflare Worker. Replace this page with your
-        app.
+        A real-time multiplayer click counter. The game is on its way.
       </p>
       <HealthStatus />
     </section>

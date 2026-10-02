@@ -1,20 +1,19 @@
-# cf-starter — Agent Context
-
-<!--
-  New project from this template? Replace this "Project Overview" section with
-  what the app does, its domain concepts, and its invariants. Keep the rest —
-  it describes the shared stack and process. See docs/NEW_PROJECT.md.
--->
+# Click Rampage — Agent Context
 
 ## Project Overview
 
-cf-starter is a template for full-stack TypeScript apps on a single Cloudflare
-Worker: a React SPA served as static assets, plus a Hono API under `/api`. It
-ships a hello-world (`GET /api/health` and a page that calls it) so the whole
-pipeline — tests, preview deploys, E2E, releases — is proven before any app
-code exists.
+Click Rampage is a real-time multiplayer click counter. Everyone online sees
+everyone else's count tick up live. Players are anonymous: the server mints a
+player id into an HttpOnly cookie, and counts are server-authoritative —
+clients only ever send "increment".
 
-There is no data layer by default. Add one per project from `docs/recipes/`.
+It runs on a single Cloudflare Worker: a React SPA served as static assets,
+a Hono API under `/api`, and (from Phase 1) a `Room` Durable Object that owns
+player state and broadcasts updates over WebSockets.
+
+Generated from [`trevclev0/cf-starter`](https://github.com/trevclev0/cf-starter).
+Work is planned as GitHub issues grouped into phase milestones; see the
+issue tracker for the current plan.
 
 ---
 
@@ -182,8 +181,8 @@ live in `vite.config.ts`.
 
 | Environment | Trigger | Wrangler env | Worker name |
 |---|---|---|---|
-| Production | Push to `main` | _(default)_ | `cf-starter` |
-| Preview | Pull request | `preview` | `cf-starter-preview-pr-<n>` |
+| Production | Push to `main` | _(default)_ | `click-rampage` |
+| Preview | Pull request | `preview` | `click-rampage-preview-pr-<n>` |
 
 `.github/workflows/deploy.yml` builds (with `CLOUDFLARE_ENV=preview` on PRs so
 the Vite plugin flattens `env.preview` into the build output), deploys, and

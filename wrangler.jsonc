@@ -8,7 +8,7 @@
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cf-starter",
+  "name": "click-rampage",
   "main": "./src/worker/index.ts",
   "compatibility_date": "2026-04-27",
   "compatibility_flags": ["nodejs_compat"],

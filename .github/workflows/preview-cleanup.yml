@@ -16,7 +16,7 @@ permissions:
 
 env:
   # Keep in sync with deploy.yml.
-  PREVIEW_PREFIX: cf-starter-preview-pr
+  PREVIEW_PREFIX: click-rampage-preview-pr
 
 jobs:
   cleanup:

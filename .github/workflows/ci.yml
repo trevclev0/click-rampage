@@ -2,8 +2,8 @@ name: CI
 on:
   push:
     branches: ["main"]
+  # Any base branch, so stacked PRs (targeting another PR's branch) get CI.
   pull_request:
-    branches: ["main"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

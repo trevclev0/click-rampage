@@ -15,7 +15,7 @@ concurrency:
 env:
   # Per-PR preview Workers are named "<PREVIEW_PREFIX>-<PR number>".
   # Keep in sync with preview-cleanup.yml and the "name" in wrangler.jsonc.
-  PREVIEW_PREFIX: cf-starter-preview-pr
+  PREVIEW_PREFIX: click-rampage-preview-pr
 
 jobs:
   deploy:
