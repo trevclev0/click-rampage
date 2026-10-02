@@ -1,5 +1,5 @@
 // @vitest-environment node
-import app from "@worker/index";
+import app from "@worker/app";
 import { describe, expect, it } from "vitest";
 import { isValidPlayerId, PLAYER_COOKIE } from "./player";
 

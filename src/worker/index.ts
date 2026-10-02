@@ -1,33 +1,4 @@
-import {
-  conditionalLogger,
-  requestIdMiddleware,
-} from "@worker/middleware/logger";
-import { playerMiddleware } from "@worker/middleware/player";
-import { healthRouter } from "@worker/routes/health";
-import { meRouter } from "@worker/routes/me";
-import type { AppEnv } from "@worker/types";
-import { formatErrorResponse, logError } from "@worker/utils/errorHandler";
-import { Hono } from "hono";
-
-const app = new Hono<AppEnv>();
-
-app.use(requestIdMiddleware);
-app.use(conditionalLogger);
-
-app.onError((err, c) => {
-  logError(err, c.req.method, c.req.path, c.get("requestId"));
-  return c.json(formatErrorResponse(), 500);
-});
-
-app.notFound((c) => c.json({ status: "error", code: "NOT_FOUND" }, 404));
-
-// Static assets are served before the worker runs; only /api/* reaches Hono
-// (see "run_worker_first" in wrangler.jsonc).
-const api = new Hono<AppEnv>()
-  .use("*", playerMiddleware)
-  .route("/health", healthRouter)
-  .route("/me", meRouter);
-
-app.route("/api", api);
-
-export default app;
+// Worker entry: the Hono app handles fetch; Durable Object classes must be
+// exported from this module so the runtime can find them.
+export { default } from "@worker/app";
+export { Room } from "@worker/durable-objects/Room";

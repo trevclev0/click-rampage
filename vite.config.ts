@@ -57,6 +57,7 @@ export default defineConfig({
         "src/react-app/routes/__root.tsx",
         "src/react-app/api/queryClient.ts",
         "src/worker/index.ts",
+        "src/worker/app.ts",
         "**/*.d.ts",
         "**/test-utils/**",
       ],

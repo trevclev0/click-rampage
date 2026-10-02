@@ -1,5 +1,5 @@
 // @vitest-environment node
-import app from "@worker/index";
+import app from "@worker/app";
 import { describe, expect, it, vi } from "vitest";
 
 // Unit-level: drives the Hono app directly with a hand-built env. The
