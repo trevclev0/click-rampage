@@ -8,7 +8,20 @@ import { parseClientMessage, type ServerMessage } from "@shared/protocol";
 import { isValidPlayerId } from "@worker/middleware/player";
 import { PLAYER_ID_HEADER } from "./roomConstants";
 
-type SocketAttachment = { playerId: string };
+/** Increments allowed per socket per second; extra ones are dropped. */
+export const MAX_INCREMENTS_PER_SECOND = 20;
+
+/**
+ * Per-socket state. Stored with serializeAttachment because instance fields
+ * are lost when the Room hibernates.
+ */
+type SocketAttachment = {
+  playerId: string;
+  /** Start (ms) of the current one-second rate-limit window. */
+  windowStart: number;
+  /** Increments accepted in the current window. */
+  windowCount: number;
+};
 
 type PlayerRow = Pick<Player, "id" | "name" | "count">;
 
@@ -46,14 +59,25 @@ export class Room extends DurableObject<Env> {
       return new Response("Missing player", { status: 400 });
     }
 
+    // A player is "joining" only when this is their first open socket;
+    // another tab for an already-online player is silent.
+    const alreadyOnline = this.ctx.getWebSockets(playerId).length > 0;
+
     const { 0: client, 1: server } = new WebSocketPair();
     // acceptWebSocket (not server.accept()) opts into hibernation: idle
     // sockets stay open while the instance sleeps.
     this.ctx.acceptWebSocket(server, [playerId]);
-    server.serializeAttachment({ playerId } satisfies SocketAttachment);
+    server.serializeAttachment({
+      playerId,
+      windowStart: 0,
+      windowCount: 0,
+    } satisfies SocketAttachment);
 
     const you = this.getOrCreatePlayer(playerId);
     send(server, { type: "welcome", you, online: this.#onlinePlayers() });
+    if (!alreadyOnline) {
+      this.#broadcast({ type: "player_joined", player: you }, server);
+    }
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -69,18 +93,83 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
+    // Identity comes only from the socket, never from the message body.
+    const attachment = ws.deserializeAttachment() as SocketAttachment;
+    const { playerId } = attachment;
+
     switch (message.type) {
       case "ping":
         send(ws, { type: "pong", t: message.t });
         return;
-      case "increment":
-      case "rename":
-        send(ws, {
-          type: "error",
-          code: "unsupported",
-          message: `"${message.type}" is not available yet`,
+      case "increment": {
+        if (!this.#allowIncrement(ws, attachment)) return;
+        const { count } = this.increment(playerId);
+        this.#broadcast({ type: "count", id: playerId, count });
+        return;
+      }
+      case "rename": {
+        const result = this.rename(playerId, message.name);
+        if (!result.ok) {
+          send(ws, {
+            type: "error",
+            code: "invalid_name",
+            message: "Names must be 1-20 visible characters",
+          });
+          return;
+        }
+        this.#broadcast({
+          type: "renamed",
+          id: playerId,
+          name: result.player.name,
         });
         return;
+      }
+    }
+  }
+
+  async webSocketClose(ws: WebSocket, code: number, reason: string) {
+    this.#handleDisconnect(ws);
+    try {
+      // Complete the closing handshake; a no-op if the runtime already did.
+      ws.close(code, reason);
+    } catch {
+      // Already closed.
+    }
+  }
+
+  async webSocketError(ws: WebSocket) {
+    this.#handleDisconnect(ws);
+  }
+
+  /** Sends `player_left` once the player's last socket has gone. */
+  #handleDisconnect(ws: WebSocket) {
+    const { playerId } = ws.deserializeAttachment() as SocketAttachment;
+    const stillOnline = this.ctx
+      .getWebSockets(playerId)
+      .some((other) => other !== ws && other.readyState === WebSocket.OPEN);
+    if (!stillOnline)
+      this.#broadcast({ type: "player_left", id: playerId }, ws);
+  }
+
+  /** Fixed one-second window per socket; returns false when over the cap. */
+  #allowIncrement(ws: WebSocket, attachment: SocketAttachment): boolean {
+    const now = Date.now();
+    if (now - attachment.windowStart >= 1000) {
+      attachment.windowStart = now;
+      attachment.windowCount = 0;
+    }
+    if (attachment.windowCount >= MAX_INCREMENTS_PER_SECOND) return false;
+    attachment.windowCount += 1;
+    ws.serializeAttachment(attachment);
+    return true;
+  }
+
+  /** Sends to every open socket, optionally skipping one. */
+  #broadcast(message: ServerMessage, except?: WebSocket) {
+    const data = JSON.stringify(message);
+    for (const socket of this.ctx.getWebSockets()) {
+      if (socket === except || socket.readyState !== WebSocket.OPEN) continue;
+      socket.send(data);
     }
   }
 

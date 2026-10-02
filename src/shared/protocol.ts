@@ -24,11 +24,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ping"), t: z.number() }),
 ]);
 
-export const errorCodes = [
-  "invalid_message",
-  "invalid_name",
-  "unsupported",
-] as const;
+export const errorCodes = ["invalid_message", "invalid_name"] as const;
 
 export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({
