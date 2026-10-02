@@ -2,7 +2,9 @@ import {
   conditionalLogger,
   requestIdMiddleware,
 } from "@worker/middleware/logger";
+import { playerMiddleware } from "@worker/middleware/player";
 import { healthRouter } from "@worker/routes/health";
+import { meRouter } from "@worker/routes/me";
 import type { AppEnv } from "@worker/types";
 import { formatErrorResponse, logError } from "@worker/utils/errorHandler";
 import { Hono } from "hono";
@@ -21,7 +23,10 @@ app.notFound((c) => c.json({ status: "error", code: "NOT_FOUND" }, 404));
 
 // Static assets are served before the worker runs; only /api/* reaches Hono
 // (see "run_worker_first" in wrangler.jsonc).
-const api = new Hono<AppEnv>().route("/health", healthRouter);
+const api = new Hono<AppEnv>()
+  .use("*", playerMiddleware)
+  .route("/health", healthRouter)
+  .route("/me", meRouter);
 
 app.route("/api", api);
 
