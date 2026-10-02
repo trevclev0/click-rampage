@@ -10,6 +10,15 @@ test.describe("@smoke", () => {
     await expect(page.getByRole("status")).toContainText("API ok");
   });
 
+  test("home page joins the room over a WebSocket", async ({ page }) => {
+    await page.goto("/");
+
+    // \b keeps "disconnected" from matching.
+    await expect(page.getByLabel("Room connection")).toContainText(
+      /\bconnected\b/,
+    );
+  });
+
   test("health endpoint responds", async ({ request }) => {
     const response = await request.get("/api/health");
 
