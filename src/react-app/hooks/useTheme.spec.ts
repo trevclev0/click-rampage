@@ -2,13 +2,26 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { THEME_STORAGE_KEY, useTheme } from "./useTheme";
 
-const stubSystemTheme = (theme: "light" | "dark") => {
+/** Stubs matchMedia; the returned setter simulates an OS theme change. */
+const stubSystemTheme = (initial: "light" | "dark") => {
+  let dark = initial === "dark";
+  const listeners = new Set<() => void>();
   vi.stubGlobal(
     "matchMedia",
-    vi.fn((query: string) => ({
-      matches: theme === "dark" && query === "(prefers-color-scheme: dark)",
+    vi.fn(() => ({
+      get matches() {
+        return dark;
+      },
+      addEventListener: (_: string, listener: () => void) =>
+        listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) =>
+        listeners.delete(listener),
     })),
   );
+  return (theme: "light" | "dark") => {
+    dark = theme === "dark";
+    for (const listener of listeners) listener();
+  };
 };
 
 afterEach(() => {
@@ -19,13 +32,22 @@ afterEach(() => {
 });
 
 describe("useTheme", () => {
-  it("falls back to the system preference", () => {
+  it("follows the system preference without pinning <html>", () => {
     stubSystemTheme("dark");
 
     const { result } = renderHook(() => useTheme());
 
     expect(result.current.theme).toBe("dark");
-    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+  });
+
+  it("keeps following the OS while no choice is saved", () => {
+    const setSystemTheme = stubSystemTheme("light");
+    const { result } = renderHook(() => useTheme());
+
+    act(() => setSystemTheme("dark"));
+
+    expect(result.current.theme).toBe("dark");
   });
 
   it("prefers a saved choice over the system preference", () => {
@@ -35,6 +57,7 @@ describe("useTheme", () => {
     const { result } = renderHook(() => useTheme());
 
     expect(result.current.theme).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
   });
 
   it("ignores an unknown saved value", () => {
@@ -46,7 +69,7 @@ describe("useTheme", () => {
     expect(result.current.theme).toBe("light");
   });
 
-  it("toggles, saves the choice and updates <html>", () => {
+  it("toggles, saves the choice and pins <html>", () => {
     stubSystemTheme("light");
     const { result } = renderHook(() => useTheme());
 
@@ -59,6 +82,24 @@ describe("useTheme", () => {
     act(() => result.current.toggleTheme());
 
     expect(result.current.theme).toBe("light");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+  });
+
+  it("picks up a choice saved in another tab", () => {
+    stubSystemTheme("light");
+    const { result } = renderHook(() => useTheme());
+
+    act(() => {
+      localStorage.setItem(THEME_STORAGE_KEY, "dark");
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: THEME_STORAGE_KEY }),
+      );
+    });
+
+    expect(result.current.theme).toBe("dark");
+
+    // Toggling from here builds on the other tab's choice.
+    act(() => result.current.toggleTheme());
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
   });
 

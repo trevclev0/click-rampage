@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 export type Theme = "light" | "dark";
 
 // Keep in sync with public/theme-init.js.
 export const THEME_STORAGE_KEY = "cr-theme";
+const DARK_QUERY = "(prefers-color-scheme: dark)";
 
 function readStoredTheme(): Theme | null {
   try {
@@ -14,20 +15,43 @@ function readStoredTheme(): Theme | null {
   }
 }
 
-function systemTheme(): Theme {
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+const systemTheme = (): Theme =>
+  window.matchMedia?.(DARK_QUERY).matches ? "dark" : "light";
+
+// Re-render when the OS theme changes or another tab saves a choice.
+function subscribe(onChange: () => void) {
+  const media = window.matchMedia?.(DARK_QUERY);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === THEME_STORAGE_KEY) onChange();
+  };
+  media?.addEventListener?.("change", onChange);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    media?.removeEventListener?.("change", onChange);
+    window.removeEventListener("storage", onStorage);
+  };
 }
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(
-    () => readStoredTheme() ?? systemTheme(),
-  );
+  const stored = useSyncExternalStore(subscribe, readStoredTheme);
+  const system = useSyncExternalStore(subscribe, systemTheme);
+  // Holds the choice when storage is blocked; setting it also re-renders
+  // this tab after a successful save (the storage event only fires in
+  // other tabs).
+  const [unsaved, setUnsaved] = useState<Theme | null>(null);
+  const choice = stored ?? unsaved;
+  const theme = choice ?? system;
 
+  // Only an explicit choice pins the theme; without one, the CSS media
+  // query keeps following the OS.
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const root = document.documentElement;
+    if (choice) {
+      root.dataset.theme = choice;
+    } else {
+      delete root.dataset.theme;
+    }
+  }, [choice]);
 
   const toggleTheme = useCallback(() => {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -36,7 +60,7 @@ export function useTheme() {
     } catch {
       // Storage blocked: the choice still applies for this visit.
     }
-    setTheme(next);
+    setUnsaved(next);
   }, [theme]);
 
   return { theme, toggleTheme };

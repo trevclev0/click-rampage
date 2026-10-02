@@ -5,7 +5,8 @@ test.use({ colorScheme: "light" });
 test("theme choice survives a reload", async ({ page }) => {
   await page.goto("/");
   const html = page.locator("html");
-  await expect(html).toHaveAttribute("data-theme", "light");
+  // No saved choice: the OS preference applies and nothing is pinned.
+  await expect(html).not.toHaveAttribute("data-theme");
 
   await page.getByRole("button", { name: "Switch to dark theme" }).click();
   await expect(html).toHaveAttribute("data-theme", "dark");
