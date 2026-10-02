@@ -3,6 +3,8 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { initialRoomState, roomReducer } from "./roomReducer";
 
 export const PING_INTERVAL_MS = 30_000;
+export const PONG_TIMEOUT_MS = 10_000;
+export const STABLE_CONNECTION_MS = 10_000;
 const BASE_RETRY_MS = 1_000;
 const MAX_RETRY_MS = 30_000;
 
@@ -40,32 +42,64 @@ export function useRoomSocket() {
     let stopped = false;
     let attempt = 0;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    let pingTimer: ReturnType<typeof setInterval> | undefined;
-
-    const ping = () => send({ type: "ping", t: Date.now() });
+    let closeCurrent: (() => void) | undefined;
 
     const open = () => {
       dispatch({ type: "status", status: "connecting" });
       const socket = new WebSocket(roomSocketUrl(window.location));
       socketRef.current = socket;
 
-      socket.onopen = () => {
-        attempt = 0;
-        ping();
-        pingTimer = setInterval(ping, PING_INTERVAL_MS);
-      };
-      socket.onmessage = (event) => {
-        const message = parseServerMessage(event.data);
-        if (!message) return;
-        dispatch({ type: "message", message, receivedAt: Date.now() });
-      };
-      socket.onclose = () => {
+      let closed = false;
+      let pingTimer: ReturnType<typeof setInterval> | undefined;
+      let pongDeadline: ReturnType<typeof setTimeout> | undefined;
+      let stableTimer: ReturnType<typeof setTimeout> | undefined;
+
+      // Runs once per socket, for a close event, a missed pong or cleanup.
+      // Handlers are detached first, so a late event from this socket can
+      // never touch a newer one.
+      const handleClose = () => {
+        if (closed) return;
+        closed = true;
         clearInterval(pingTimer);
-        socketRef.current = null;
+        clearTimeout(pongDeadline);
+        clearTimeout(stableTimer);
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onclose = null;
+        if (socketRef.current === socket) socketRef.current = null;
+        socket.close();
         if (stopped) return;
         dispatch({ type: "status", status: "connecting" });
         retryTimer = setTimeout(open, retryDelay(attempt++));
       };
+      closeCurrent = handleClose;
+
+      // A half-open connection never fires close, so an unanswered ping is
+      // treated as a drop.
+      const ping = () => {
+        if (!send({ type: "ping", t: Date.now() })) return;
+        pongDeadline ??= setTimeout(handleClose, PONG_TIMEOUT_MS);
+      };
+
+      socket.onopen = () => {
+        ping();
+        pingTimer = setInterval(ping, PING_INTERVAL_MS);
+        // Only a connection that stays up resets the backoff; one that
+        // drops right after the handshake keeps backing off.
+        stableTimer = setTimeout(() => {
+          attempt = 0;
+        }, STABLE_CONNECTION_MS);
+      };
+      socket.onmessage = (event) => {
+        const message = parseServerMessage(event.data);
+        if (!message) return;
+        if (message.type === "pong") {
+          clearTimeout(pongDeadline);
+          pongDeadline = undefined;
+        }
+        dispatch({ type: "message", message, receivedAt: Date.now() });
+      };
+      socket.onclose = handleClose;
     };
 
     open();
@@ -73,9 +107,7 @@ export function useRoomSocket() {
     return () => {
       stopped = true;
       clearTimeout(retryTimer);
-      clearInterval(pingTimer);
-      socketRef.current?.close();
-      socketRef.current = null;
+      closeCurrent?.();
     };
   }, [enabled, send]);
 

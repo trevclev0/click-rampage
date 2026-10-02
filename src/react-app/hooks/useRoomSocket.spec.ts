@@ -3,6 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PING_INTERVAL_MS,
+  PONG_TIMEOUT_MS,
   retryDelay,
   roomSocketUrl,
   useRoomSocket,
@@ -127,6 +128,79 @@ describe("useRoomSocket", () => {
     act(() => result.current.connect());
     expect(MockWebSocket.instances).toHaveLength(2);
     expect(result.current.status).toBe("connecting");
+  });
+
+  it("treats an unanswered ping as a drop and reconnects", () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    const { result, socket } = connect();
+
+    act(() => vi.advanceTimersByTime(PONG_TIMEOUT_MS));
+
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    expect(result.current.status).toBe("connecting");
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(MockWebSocket.instances).toHaveLength(2);
+  });
+
+  it("keeps a connection whose pings are answered", () => {
+    const { socket } = connect();
+
+    act(() => {
+      socket.receive({ type: "pong", t: 1_000 });
+      vi.advanceTimersByTime(PING_INTERVAL_MS - 1);
+    });
+
+    expect(socket.readyState).toBe(MockWebSocket.OPEN);
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it("keeps backing off when connections drop right after opening", () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    const { socket } = connect();
+
+    act(() => socket.drop());
+    act(() => vi.advanceTimersByTime(1_000));
+    act(() => {
+      MockWebSocket.latest().open();
+      MockWebSocket.latest().drop();
+    });
+
+    // Second retry waits 2s, not 1s: the brief open did not reset backoff.
+    act(() => vi.advanceTimersByTime(1_999));
+    expect(MockWebSocket.instances).toHaveLength(2);
+    act(() => vi.advanceTimersByTime(1));
+    expect(MockWebSocket.instances).toHaveLength(3);
+  });
+
+  it("resets backoff once a connection stays up", () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    const { socket } = connect();
+    act(() => socket.drop());
+    act(() => vi.advanceTimersByTime(1_000));
+
+    const second = MockWebSocket.latest();
+    act(() => {
+      second.open();
+      second.receive({ type: "pong", t: Date.now() });
+      vi.advanceTimersByTime(10_000);
+    });
+    act(() => second.drop());
+
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(MockWebSocket.instances).toHaveLength(3);
+  });
+
+  it("ignores a late close from a replaced socket", () => {
+    const { result, socket } = connect();
+    const lateClose = socket.onclose;
+
+    act(() => result.current.disconnect());
+    act(() => result.current.connect());
+    act(() => MockWebSocket.latest().open());
+    act(() => lateClose?.());
+
+    expect(result.current.send({ type: "increment" })).toBe(true);
+    expect(MockWebSocket.latest().sent.at(-1)).toEqual({ type: "increment" });
   });
 
   it("closes the socket on unmount", () => {
