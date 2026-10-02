@@ -19,6 +19,13 @@ describe("normalizePlayerName", () => {
     expect(normalizePlayerName("🔥".repeat(MAX_NAME_LENGTH))).not.toBeNull();
   });
 
+  it("counts a skin-toned emoji (two code points) as one character", () => {
+    const thumbs = "\u{1F44D}\u{1F3FD}"; // 👍🏽
+
+    expect(normalizePlayerName(thumbs.repeat(MAX_NAME_LENGTH))).not.toBeNull();
+    expect(normalizePlayerName(thumbs.repeat(MAX_NAME_LENGTH + 1))).toBeNull();
+  });
+
   it.each(["", "   ", "​\u0007", "x".repeat(MAX_NAME_LENGTH + 1)])(
     "rejects %j",
     (input) => {
