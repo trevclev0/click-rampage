@@ -29,7 +29,8 @@
     "@tanstack/react-router": "^1.170.38",
     "hono": "4.13.8",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

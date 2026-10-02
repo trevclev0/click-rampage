@@ -58,6 +58,9 @@ export default defineConfig({
         "src/react-app/api/queryClient.ts",
         "src/worker/index.ts",
         "src/worker/app.ts",
+        // Durable Objects run only in workerd and are covered by
+        // *.integration.spec.ts, which V8 coverage cannot instrument.
+        "src/worker/durable-objects/Room.ts",
         "**/*.d.ts",
         "**/test-utils/**",
       ],
