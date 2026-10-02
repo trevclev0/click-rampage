@@ -5,8 +5,10 @@ import { z } from "zod";
  * import these schemas; never hand-roll message shapes elsewhere.
  */
 
-/** Messages larger than this are rejected before parsing. */
+/** Messages larger than this (UTF-8 bytes) are rejected before parsing. */
 export const MAX_MESSAGE_BYTES = 1024;
+
+const encoder = new TextEncoder();
 
 const playerSchema = z.object({
   id: z.string(),
@@ -57,7 +59,10 @@ export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export function parseClientMessage(
   raw: string | ArrayBuffer,
 ): ClientMessage | null {
-  if (typeof raw !== "string" || raw.length > MAX_MESSAGE_BYTES) return null;
+  if (typeof raw !== "string") return null;
+  // Cheap pre-check first: UTF-8 never uses fewer bytes than UTF-16 units.
+  if (raw.length > MAX_MESSAGE_BYTES) return null;
+  if (encoder.encode(raw).byteLength > MAX_MESSAGE_BYTES) return null;
   let json: unknown;
   try {
     json = JSON.parse(raw);

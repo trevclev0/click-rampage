@@ -25,9 +25,34 @@ describe("parseClientMessage", () => {
     ["unknown type", JSON.stringify({ type: "explode" })],
     ["missing field", JSON.stringify({ type: "ping" })],
     ["wrong field type", JSON.stringify({ type: "rename", name: 42 })],
-    ["oversized frame", `"${"x".repeat(MAX_MESSAGE_BYTES)}"`],
   ])("rejects %s", (_, raw) => {
     expect(parseClientMessage(raw)).toBeNull();
+  });
+
+  // Padding goes in an unknown field (stripped by the schema), so these
+  // frames are otherwise valid and only the size limit can reject them.
+  const pingWithPadding = (pad: string) =>
+    JSON.stringify({ type: "ping", t: 1, pad });
+
+  it("rejects a frame over the limit", () => {
+    expect(
+      parseClientMessage(pingWithPadding("x".repeat(MAX_MESSAGE_BYTES))),
+    ).toBeNull();
+  });
+
+  it("measures the limit in UTF-8 bytes, not characters", () => {
+    // 400 "€" = 400 characters but 1,200 bytes.
+    const frame = pingWithPadding("€".repeat(400));
+
+    expect(frame.length).toBeLessThan(MAX_MESSAGE_BYTES);
+    expect(parseClientMessage(frame)).toBeNull();
+  });
+
+  it("accepts a valid frame just under the limit", () => {
+    expect(parseClientMessage(pingWithPadding("x".repeat(900)))).toEqual({
+      type: "ping",
+      t: 1,
+    });
   });
 
   it("rejects binary frames", () => {
