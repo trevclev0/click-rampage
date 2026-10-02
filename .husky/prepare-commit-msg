@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+
+# Skip if $3 is set (amend / commit -c)
+[ -n "$3" ] && exit 0
+
+# Skip during git rebase
+GIT_DIR="$(git rev-parse --git-dir 2>/dev/null)"
+if [ -d "$GIT_DIR/rebase-merge" ] || [ -d "$GIT_DIR/rebase-apply" ]; then
+  exit 0
+fi
+
+# Skip when the message was supplied with -m / -F (commit-msg still lints it)
+[ "${2:-}" = "message" ] && exit 0
+
+# Only launch Commitizen if a TTY is available (i.e., a real terminal)
+if [ -t 1 ]; then
+  exec < /dev/tty && bunx czg --hook || true
+fi

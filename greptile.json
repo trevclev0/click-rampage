@@ -1,0 +1,37 @@
+{
+  "instructions": "Follow AGENTS.md and CONVENTIONS.md strictly. Bun only, Cloudflare Workers runtime (not Node.js), single Worker serving a React SPA plus a Hono API under /api.",
+  "commentTypes": ["logic", "syntax"],
+  "strictness": 1,
+  "statusCheck": false,
+  "triggerOnUpdates": false,
+  "shouldUpdateDescription": false,
+  "ignorePatterns": "src/react-app/routeTree.gen.ts\nworker-configuration.d.ts\nbun.lock\npublic/**\ndist/**\ncoverage/**\n**/test-results/**\n**/playwright-report/**\n.wrangler/**",
+  "customContext": {
+    "files": [
+      {
+        "scope": ["**/*.ts", "**/*.tsx"],
+        "path": "AGENTS.md",
+        "description": "Project architecture, stack, and invariants"
+      },
+      {
+        "scope": ["**/*.ts", "**/*.tsx"],
+        "path": "CONVENTIONS.md",
+        "description": "Coding conventions"
+      }
+    ],
+    "rules": [
+      {
+        "scope": ["src/**/*.tsx"],
+        "rule": "All styling must use CSS Modules. No inline style={} props, no CSS-in-JS."
+      },
+      {
+        "scope": ["src/react-app/**"],
+        "rule": "No useEffect for data fetching — use TanStack Query (useQuery/useMutation)."
+      },
+      {
+        "scope": ["src/worker/**"],
+        "rule": "Cloudflare Workers runtime - no Node-only APIs (fs, path, process.env directly). Validate all inputs at the handler layer before touching storage."
+      }
+    ]
+  }
+}

@@ -1,0 +1,68 @@
+language: en-US
+reviews:
+  # Most aggressive review profile.
+  profile: assertive
+  # Advisory only — CI status checks are the merge gate.
+  # Do not post approvals, do not block merges.
+  request_changes_workflow: false
+  high_level_summary: true
+  # Summary as review comment (walkthrough), not PR-description edits.
+  high_level_summary_in_walkthrough: true
+  collapse_walkthrough: true
+  # Review each PR exactly once, no re-reviews on push (free-tier + credit-safe).
+  auto_review:
+    enabled: true
+    auto_incremental_review: false
+    drafts: false
+  # Generated / build-artifact paths never warrant AI review.
+  path_filters:
+    - "!src/react-app/routeTree.gen.ts"
+    - "!worker-configuration.d.ts"
+    - "!bun.lock"
+    - "!public/**"
+    - "!**/test-results/**"
+    - "!**/playwright-report/**"
+  path_instructions:
+    - path: "src/worker/**"
+      instructions: |
+        Runtime is Cloudflare Workers, not Node.js. No Node-only APIs (fs, path,
+        process.env directly). No stray console.log — structured JSON logs only
+        (see src/worker/middleware/logger.ts). Keep Hono handlers thin and
+        validate all inputs before touching storage.
+    - path: "src/**/*.tsx"
+      instructions: |
+        - No inline style={} props. All styling via co-located CSS Modules
+          (ComponentName.module.css), no CSS-in-JS.
+        - No useEffect for data fetching. Use TanStack Query (useQuery/useMutation) with
+          intentional staleTime.
+        - TanStack Router only; use createFileRoute.
+    - path: "src/**/*.spec.ts*"
+      instructions: |
+        Tests co-located next to source (foo.spec.ts). Unit tests must not use real
+        Workers bindings. All network requests fully mocked (MSW). Vitest only, no
+        Jest APIs.
+    - path: "e2e/**"
+      instructions: |
+        Playwright E2E specs. They run locally against `bun run dev` and in CI
+        against the per-PR preview deployment (BASE_URL).
+    - path: "**/*.ts"
+      instructions: |
+        TypeScript strict mode — no `any`, use unknown and narrow explicitly. Prefer early
+        returns over nested conditionals. Bun is the only package manager (never npm, yarn,
+        or pnpm). No barrel files unless already established in that directory.
+  tools:
+    biome:
+      enabled: true
+    gitleaks:
+      enabled: true
+    markdownlint:
+      enabled: true
+    eslint:
+      enabled: false
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/AGENTS.md"
+      - "**/CONVENTIONS.md"

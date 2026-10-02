@@ -1,0 +1,93 @@
+name: CI
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      - name: Check generated Worker types are up to date
+        run: |
+          mise run cf-typegen
+          if ! git diff --exit-code --quiet -- worker-configuration.d.ts; then
+            echo "::error::worker-configuration.d.ts is out of date. Run 'bun run cf-typegen' and commit the output."
+            exit 1
+          fi
+
+      # Typecheck here rather than only inside `build` (Deploy), so a
+      # type-level break in a dependency bump fails in ~seconds on the
+      # PR instead of burning a Cloudflare preview deploy.
+      - name: Run typecheck
+        run: mise run typecheck
+
+      - name: Run Biome checks
+        run: bunx biome ci .
+
+      - name: Run tests with coverage
+        id: tests
+        run: mise run coverage
+
+      - name: Report coverage
+        # The report action reads coverage/coverage-summary.json, which the
+        # coverage run only writes on success. Without this gate a test
+        # failure cascades into a spurious ENOENT error.
+        if: steps.tests.outcome == 'success'
+        uses: davelosert/vitest-coverage-report-action@v2
+
+  integration-test:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      - name: Run integration tests
+        run: mise run test:integration
+
+  commitlint:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      - name: Validate commit messages
+        run: bunx commitlint --from origin/${{ github.base_ref }} --to HEAD

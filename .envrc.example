@@ -1,0 +1,6 @@
+# Copy this file to .envrc and fill in values.
+# Install direnv: https://direnv.net
+# Then run: direnv allow .
+
+# Enable AI-powered features (e.g., commit message generation)
+export CZG_AI_ENABLED=true

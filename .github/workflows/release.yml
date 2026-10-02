@@ -1,0 +1,68 @@
+name: Release
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # PR check: proves release.config.mjs and its plugins load. On pull_request
+  # runs semantic-release exits before any GitHub call, so this job gets no
+  # release token — PR-controlled config never sees a write-capable
+  # credential.
+  release-dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      - name: Release dry-run
+        run: bunx semantic-release --dry-run
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # The release App token below does all writes; GITHUB_TOKEN stays
+    # read-only.
+    permissions:
+      contents: read
+    steps:
+      # A GitHub App token (not GITHUB_TOKEN) so the release commit/tag can
+      # land on a protected main. Needs the RELEASE_APP_CLIENT_ID variable and
+      # RELEASE_APP_PRIVATE_KEY secret — see docs/NEW_PROJECT.md.
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      - name: Release
+        run: bunx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}

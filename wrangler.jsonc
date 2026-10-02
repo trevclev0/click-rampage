@@ -1,0 +1,52 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ *
+ * Renaming the project? Update "name" here, the PREVIEW_PREFIX in
+ * .github/workflows/deploy.yml and preview-cleanup.yml, and run
+ * `bun run cf-typegen`. See docs/NEW_PROJECT.md.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-starter",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-04-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": false,
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "workers_dev": true,
+  "preview_urls": true,
+  /**
+   * Custom domain (production only). Uncomment, set the hostname, and flip
+   * "workers_dev" to false once the domain is on this Cloudflare account:
+   *
+   * "workers_dev": false,
+   * "routes": [{ "pattern": "app.example.com", "custom_domain": true }],
+   */
+  "vars": {
+    "ENVIRONMENT": "production"
+  },
+  "env": {
+    "preview": {
+      "workers_dev": true,
+      "routes": [],
+      "vars": {
+        "ENVIRONMENT": "preview"
+      }
+    }
+  }
+  /**
+   * Bindings (D1, Durable Objects, KV, R2, AI, ...)
+   * https://developers.cloudflare.com/workers/runtime-apis/bindings/
+   *
+   * Bindings are NOT inherited by "env.preview" — declare each one at the
+   * top level AND inside "env.preview". Recipes: docs/recipes/.
+   */
+}

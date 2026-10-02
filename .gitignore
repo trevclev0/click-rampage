@@ -1,0 +1,31 @@
+# Dependency directories
+node_modules
+
+# Build / generated output
+dist
+coverage/
+
+# Local environment files
+.wrangler/
+.env*
+!.env.example
+.dev.vars*
+!.dev.vars.example
+!.envrc.example
+
+# macOS attributes file
+.DS_Store
+
+# Local SQLite database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# TanStack Router temporary files
+.tanstack/
+
+# Playwright
+**/playwright-report/
+**/test-results/
+**/.cache/

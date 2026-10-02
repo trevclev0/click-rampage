@@ -1,0 +1,82 @@
+[tools]
+bun = "1.3.14"
+
+[tasks.dev]
+run = "bun run dev"
+description = "Start development server"
+
+[tasks.lint]
+run = "bun run lint"
+description = "Lint code"
+
+[tasks.format]
+run = "bun run format"
+description = "Format code"
+
+[tasks."check:code"]
+run = "bun run check:code"
+description = "Lint + format + organize imports (writes fixes)"
+
+[tasks.typecheck]
+run = "bun run typecheck"
+description = "Typecheck all tsconfig projects"
+
+[tasks.build]
+run = "bun run build"
+description = "Build project"
+
+[tasks.check]
+depends = ["build"]
+run = "bunx wrangler deploy --dry-run"
+description = "Build, then dry-run the deploy"
+
+[tasks.preview]
+depends = ["build"]
+run = "bunx vite preview"
+description = "Preview build"
+
+[tasks.test]
+run = "bun run test"
+description = "Run unit tests (watch)"
+
+[tasks."test:run"]
+run = "bun run test --run"
+description = "Run unit tests single run"
+
+[tasks."test:integration"]
+run = "bun run test:integration"
+description = "Run integration tests (workerd via vitest-pool-workers)"
+
+[tasks.coverage]
+run = "bun run coverage"
+description = "Run unit tests with coverage"
+
+[tasks."test:ui"]
+run = "bun run test:ui"
+description = "Run tests with UI"
+
+[tasks."test:e2e"]
+run = "bun run test:e2e"
+description = "Run Playwright E2E tests against the local dev server"
+
+[tasks."test:e2e:ci"]
+run = "bunx playwright test"
+description = "Run E2E against BASE_URL (browsers installed separately in CI)"
+
+[tasks."cf-typegen"]
+run = "bun run cf-typegen"
+description = "Regenerate worker-configuration.d.ts from wrangler.jsonc"
+
+[tasks.deploy]
+depends = ["build"]
+run = "bun run deploy"
+description = "Deploy to production"
+
+[tasks."deploy:preview"]
+depends = [{ task = "build", env = { CLOUDFLARE_ENV = "preview" } }]
+run = "bun run deploy:preview"
+description = "Build with CLOUDFLARE_ENV=preview and deploy to preview"
+
+[tasks."ci:local"]
+depends = ["check:code", "typecheck", "test:run", "test:integration", "check"]
+description = "Run the CI checks locally"

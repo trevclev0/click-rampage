@@ -1,0 +1,51 @@
+name: Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+# Same group as the PR's preview deploy in deploy.yml: closing the PR cancels
+# an in-flight deploy, and this job waits for it to stop before deleting.
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read # actions/checkout needs it on private repos
+  deployments: none
+
+env:
+  # Keep in sync with deploy.yml.
+  PREVIEW_PREFIX: cf-starter-preview-pr
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      - name: Delete preview worker
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NAME: ${{ env.PREVIEW_PREFIX }}-${{ github.event.pull_request.number }}
+        # Idempotent cleanup: PRs whose deploy failed (e.g. a broken build)
+        # never created a preview worker, so `wrangler delete` returns
+        # code 10090 "This Worker does not exist". Treat that as success.
+        run: |
+          set -e
+          if OUTPUT=$(bunx wrangler delete --env preview --name "$NAME" --force 2>&1); then
+            echo "$OUTPUT"
+          elif echo "$OUTPUT" | grep -q "This Worker does not exist on this account"; then
+            echo "Preview worker '$NAME' was never deployed; nothing to clean up."
+          else
+            echo "$OUTPUT"
+            exit 1
+          fi

@@ -1,0 +1,2 @@
+# Local-only Worker vars for `bun run dev` (copy to .dev.vars).
+ENVIRONMENT="development"
