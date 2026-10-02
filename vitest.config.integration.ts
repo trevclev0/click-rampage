@@ -16,8 +16,10 @@ export default defineConfig({
         bindings: {
           ENVIRONMENT: "test",
         },
-        // Add test-only bindings here as the app grows, e.g.
-        // d1Databases: { DB: "test-db" } (see docs/recipes/d1-drizzle.md).
+        // Mirrors wrangler.jsonc; the class is resolved from `main`.
+        durableObjects: {
+          ROOM: { className: "Room", useSQLite: true },
+        },
       },
     }),
   ],
