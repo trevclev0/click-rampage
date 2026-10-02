@@ -61,7 +61,7 @@ export class Room extends DurableObject<Env> {
 
     // A player is "joining" only when this is their first open socket;
     // another tab for an already-online player is silent.
-    const alreadyOnline = this.ctx.getWebSockets(playerId).length > 0;
+    const alreadyOnline = this.#openSockets(playerId).length > 0;
 
     const { 0: client, 1: server } = new WebSocketPair();
     // acceptWebSocket (not server.accept()) opts into hibernation: idle
@@ -144,9 +144,9 @@ export class Room extends DurableObject<Env> {
   /** Sends `player_left` once the player's last socket has gone. */
   #handleDisconnect(ws: WebSocket) {
     const { playerId } = ws.deserializeAttachment() as SocketAttachment;
-    const stillOnline = this.ctx
-      .getWebSockets(playerId)
-      .some((other) => other !== ws && other.readyState === WebSocket.OPEN);
+    const stillOnline = this.#openSockets(playerId).some(
+      (other) => other !== ws,
+    );
     if (!stillOnline)
       this.#broadcast({ type: "player_left", id: playerId }, ws);
   }
@@ -164,12 +164,22 @@ export class Room extends DurableObject<Env> {
     return true;
   }
 
+  /**
+   * Accepted sockets that are still OPEN. A closing socket can stay
+   * registered briefly, so every presence decision uses this one definition
+   * of "online".
+   */
+  #openSockets(playerId?: string): WebSocket[] {
+    return this.ctx
+      .getWebSockets(playerId)
+      .filter((socket) => socket.readyState === WebSocket.OPEN);
+  }
+
   /** Sends to every open socket, optionally skipping one. */
   #broadcast(message: ServerMessage, except?: WebSocket) {
     const data = JSON.stringify(message);
-    for (const socket of this.ctx.getWebSockets()) {
-      if (socket === except || socket.readyState !== WebSocket.OPEN) continue;
-      socket.send(data);
+    for (const socket of this.#openSockets()) {
+      if (socket !== except) socket.send(data);
     }
   }
 
@@ -210,9 +220,9 @@ export class Room extends DurableObject<Env> {
   /** Players with at least one open socket (several tabs = one player). */
   #onlinePlayers(): Player[] {
     const ids = new Set(
-      this.ctx
-        .getWebSockets()
-        .map((ws) => (ws.deserializeAttachment() as SocketAttachment).playerId),
+      this.#openSockets().map(
+        (ws) => (ws.deserializeAttachment() as SocketAttachment).playerId,
+      ),
     );
     return [...ids].map((id) => this.#read(id));
   }

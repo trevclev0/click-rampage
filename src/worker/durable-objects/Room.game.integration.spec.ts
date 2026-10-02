@@ -120,6 +120,29 @@ describe("Room game loop", () => {
     expect(seen).toContainEqual(left);
   });
 
+  it("announces a player again when they reconnect after leaving", async () => {
+    const watcher = await join(await newPlayer());
+    const alice = await newPlayer();
+    const first = await join(alice);
+    await drain(watcher);
+
+    first.close();
+    // Reconnect immediately, while the old socket may still be closing.
+    await join(alice);
+
+    let seen: ServerMessage[] = [];
+    for (let i = 0; i < 5; i++) {
+      seen = [...seen, ...(await drain(watcher))];
+      if (seen.some((m) => m.type === "player_joined")) break;
+    }
+    const events = seen
+      .filter((m) => m.type === "player_left" || m.type === "player_joined")
+      .map((m) => m.type);
+    // Either the leave was never announced (still online), or it was
+    // followed by a fresh join — never a trailing player_left.
+    expect(events.at(-1) ?? "player_joined").toBe("player_joined");
+  });
+
   it(`applies at most ${MAX_INCREMENTS_PER_SECOND} increments per second`, async () => {
     const alice = await newPlayer();
     const a = await join(alice);
