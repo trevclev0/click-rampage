@@ -13,10 +13,13 @@ test.describe("@smoke", () => {
   test("home page joins the room over a WebSocket", async ({ page }) => {
     await page.goto("/");
 
-    // \b keeps "disconnected" from matching.
-    await expect(page.getByLabel("Room connection")).toContainText(
-      /\bconnected\b/,
-    );
+    // Exact match on the status cell, so "connecting" or "disconnected"
+    // never count.
+    await expect(
+      page
+        .getByLabel("Room connection")
+        .getByText("connected", { exact: true }),
+    ).toBeVisible();
   });
 
   test("health endpoint responds", async ({ request }) => {
