@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_MESSAGE_BYTES,
   parseClientMessage,
+  parseServerMessage,
   serverMessageSchema,
 } from "./protocol";
 
@@ -66,5 +67,20 @@ describe("serverMessageSchema", () => {
       serverMessageSchema.safeParse({ type: "count", id: "a", count: -1 })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("parseServerMessage", () => {
+  it("parses a valid frame", () => {
+    const message = { type: "pong", t: 5 };
+    expect(parseServerMessage(JSON.stringify(message))).toEqual(message);
+  });
+
+  it.each([
+    ["binary", new ArrayBuffer(2)],
+    ["non-JSON", "nope"],
+    ["unknown type", JSON.stringify({ type: "explode" })],
+  ])("rejects %s", (_, raw) => {
+    expect(parseServerMessage(raw)).toBeNull();
   });
 });
