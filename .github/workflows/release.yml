@@ -2,8 +2,8 @@ name: Release
 on:
   push:
     branches: [main]
+  # Any base branch, so stacked PRs get the dry-run too.
   pull_request:
-    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

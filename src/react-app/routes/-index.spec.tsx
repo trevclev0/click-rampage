@@ -11,7 +11,7 @@ describe("/ route", () => {
     renderWithRouter(createTestRouter("/"));
 
     expect(
-      await screen.findByRole("heading", { name: "cf-starter" }),
+      await screen.findByRole("heading", { name: "Click Rampage" }),
     ).toBeInTheDocument();
     expect(await screen.findByText("test")).toBeInTheDocument();
   });

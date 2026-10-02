@@ -1,36 +1,11 @@
-# cf-starter
+# Click Rampage
 
-Template for full-stack TypeScript apps on a single Cloudflare Worker — a
-React SPA plus a Hono API, with tests, preview deploys, E2E, and releases
-wired up from the first commit.
+A real-time multiplayer click counter on Cloudflare Workers. Hit the button,
+watch everyone's counts climb live.
 
-## What you get
-
-- **App:** React 19 + Vite 8 + TanStack Router (file-based) + TanStack Query,
-  CSS Modules with light/dark design tokens.
-- **API:** Hono on Cloudflare Workers, mounted under `/api`, with request ids,
-  structured JSON logs, and a generic error handler.
-- **Hello world:** `GET /api/health` and a home page that calls it, tested at
-  every tier.
-- **Tests:** Vitest + React Testing Library + MSW (unit), Vitest in workerd
-  (integration), Playwright in Chromium and Firefox (E2E).
-- **Quality gates:** TypeScript strict, Biome, Husky + lint-staged,
-  commitlint (gitmoji + conventional commits), coverage thresholds.
-- **CI/CD:** GitHub Actions for CI, production deploys on `main`, a preview
-  Worker per PR with E2E against it, preview cleanup on close, and
-  semantic-release.
-- **Review bots:** Greptile and CodeRabbit configs, Dependabot.
-- **Agent docs:** `AGENTS.md` and `CONVENTIONS.md` for AI coding assistants.
-- **Recipes:** add D1 + Drizzle, Durable Objects, or Better Auth when a project
-  needs them (`docs/recipes/`).
-
-No database or other bindings ship by default.
-
-## Start a new project
-
-1. Click **Use this template** → **Create a new repository**.
-2. Follow [`docs/NEW_PROJECT.md`](docs/NEW_PROJECT.md) — rename, Cloudflare
-   token, GitHub secrets, branch protection.
+Generated from [`trevclev0/cf-starter`](https://github.com/trevclev0/cf-starter):
+React + TanStack Router/Query on the front end, Hono on a single Worker, with
+a Durable Object for shared real-time state.
 
 ## Local development
 
