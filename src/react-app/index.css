@@ -1,33 +1,88 @@
+/*
+  Design tokens. Light is the default; dark applies when the OS prefers it
+  (unless the player picked light) or when the player picked dark.
+  `data-theme` on <html> is set by public/theme-init.js before first paint
+  and kept in sync by useTheme.
+*/
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
-  --color-bg: #ffffff;
-  --color-surface: #f4f4f5;
-  --color-text: #18181b;
-  --color-muted: #52525b;
-  --color-accent: #f38020;
-  --color-ok: #15803d;
-  --color-error: #b91c1c;
+  /* Palette */
+  --color-bg: #fff8f1;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #fdeee0;
+  --color-border: #f1d9c4;
+  --color-text: #1d1230;
+  --color-muted: #6b5a7e;
+  --color-accent: #e8175d;
+  --color-accent-hover: #c80f4d;
+  --color-accent-contrast: #ffffff;
+  --color-highlight: #ffb400;
+  --color-ok: #0f8a4b;
+  --color-error: #c4202f;
+  --shadow-raised: 0 0.25rem 0 #f1d9c4;
 
-  --radius: 0.5rem;
+  /* Type scale (1.25 ratio) */
+  --font-sans:
+    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display:
+    "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.563rem;
+  --text-2xl: 1.953rem;
+  --text-3xl: 3.052rem;
+
+  /* Spacing */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 1rem;
-  --space-4: 2rem;
+  --space-4: 1.5rem;
+  --space-5: 2rem;
+  --space-6: 3rem;
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 0.75rem;
+  --radius-pill: 999px;
+  --content-width: 56rem;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #09090b;
-    --color-surface: #18181b;
-    --color-text: #f4f4f5;
-    --color-muted: #a1a1aa;
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #130d22;
+    --color-surface: #1e1533;
+    --color-surface-sunken: #0d0818;
+    --color-border: #33264f;
+    --color-text: #f6efff;
+    --color-muted: #b2a3c9;
+    --color-accent: #ff4f8b;
+    --color-accent-hover: #ff7aa8;
+    --color-accent-contrast: #130d22;
+    --color-highlight: #ffc94d;
     --color-ok: #4ade80;
-    --color-error: #f87171;
+    --color-error: #ff6b78;
+    --shadow-raised: 0 0.25rem 0 #0d0818;
   }
+}
+
+/* Same values as the media query above — keep the two blocks in sync. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #130d22;
+  --color-surface: #1e1533;
+  --color-surface-sunken: #0d0818;
+  --color-border: #33264f;
+  --color-text: #f6efff;
+  --color-muted: #b2a3c9;
+  --color-accent: #ff4f8b;
+  --color-accent-hover: #ff7aa8;
+  --color-accent-contrast: #130d22;
+  --color-highlight: #ffc94d;
+  --color-ok: #4ade80;
+  --color-error: #ff6b78;
+  --shadow-raised: 0 0.25rem 0 #0d0818;
 }
 
 *,
@@ -42,5 +97,11 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
+  font-size: var(--text-base);
   line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-highlight);
+  outline-offset: 2px;
 }
