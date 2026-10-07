@@ -19,6 +19,7 @@
   --color-accent-hover: #c80f4d;
   --color-accent-contrast: #ffffff;
   --color-highlight: #ffb400;
+  --color-focus: #1d1230;
   --color-ok: #0f8a4b;
   --color-error: #c4202f;
   --shadow-raised: 0 0.25rem 0 #f1d9c4;
@@ -62,6 +63,7 @@
     --color-accent-hover: #ff7aa8;
     --color-accent-contrast: #130d22;
     --color-highlight: #ffc94d;
+    --color-focus: #ffc94d;
     --color-ok: #4ade80;
     --color-error: #ff6b78;
     --shadow-raised: 0 0.25rem 0 #0d0818;
@@ -81,6 +83,7 @@
   --color-accent-hover: #ff7aa8;
   --color-accent-contrast: #130d22;
   --color-highlight: #ffc94d;
+  --color-focus: #ffc94d;
   --color-ok: #4ade80;
   --color-error: #ff6b78;
   --shadow-raised: 0 0.25rem 0 #0d0818;
@@ -102,7 +105,9 @@ body {
   line-height: 1.5;
 }
 
+/* --color-focus keeps at least 3:1 contrast against the page in both
+   themes (WCAG 1.4.11). */
 :focus-visible {
-  outline: 3px solid var(--color-highlight);
+  outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }
