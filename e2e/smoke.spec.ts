@@ -10,7 +10,9 @@ test.describe("@smoke", () => {
     await expect(
       page.getByRole("heading", { name: "Get ready to rampage" }),
     ).toBeVisible();
-    await expect(page.getByRole("status")).toContainText("API ok");
+    await expect(
+      page.getByRole("status").filter({ hasText: "API" }),
+    ).toContainText("API ok");
   });
 
   test("home page joins the room over a WebSocket", async ({ page }) => {
