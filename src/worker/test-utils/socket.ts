@@ -28,6 +28,7 @@ export async function connect(headers: Record<string, string> = {}) {
 
   return {
     ws,
+    response,
     send: (data: unknown) =>
       ws.send(typeof data === "string" ? data : JSON.stringify(data)),
     next: () =>
