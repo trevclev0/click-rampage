@@ -43,6 +43,22 @@ describe("GET /api/ws", () => {
     );
   });
 
+  it("sets the player cookie on a cookie-free upgrade", async () => {
+    const first = await connect();
+    const cookies = first.response.headers.getSetCookie();
+    expect(cookies).toHaveLength(1);
+    const token = /^cr_player=([^;]+)/.exec(cookies[0])?.[1];
+    expect(token).toBeDefined();
+    const welcome = await first.next();
+    first.ws.close();
+
+    // Reconnecting with that cookie keeps the same player.
+    const again = await connect(cookie(token ?? ""));
+    expect(await again.next()).toMatchObject({
+      you: { id: welcome.type === "welcome" ? welcome.you.id : "" },
+    });
+  });
+
   it("ignores a spoofed player header from the client", async () => {
     const socket = await connect({
       ...cookie(TOKEN),

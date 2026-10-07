@@ -54,5 +54,21 @@ describe("GET /api/ws", () => {
     expect(forwarded.headers.get(PLAYER_ID_HEADER)).toBe(
       await derivePlayerId(TOKEN),
     );
+    expect(response.headers.getSetCookie()).toEqual([]);
+  });
+
+  it("passes the cookie minted on a first visit through", async () => {
+    const { request, fetch } = setup();
+
+    const response = await request({ Upgrade: "websocket", Origin: ORIGIN });
+
+    expect(await response.text()).toBe("from room");
+    const cookies = response.headers.getSetCookie();
+    expect(cookies).toHaveLength(1);
+    const token = /^cr_player=([^;]+)/.exec(cookies[0])?.[1] ?? "";
+    const [forwarded] = fetch.mock.calls[0];
+    expect(forwarded.headers.get(PLAYER_ID_HEADER)).toBe(
+      await derivePlayerId(token),
+    );
   });
 });
