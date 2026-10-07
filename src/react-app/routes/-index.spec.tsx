@@ -11,7 +11,7 @@ describe("/ route", () => {
     renderWithRouter(createTestRouter("/"));
 
     expect(
-      await screen.findByRole("heading", { name: "Click Rampage" }),
+      await screen.findByRole("heading", { name: "Get ready to rampage" }),
     ).toBeInTheDocument();
     expect(await screen.findByText("test")).toBeInTheDocument();
   });

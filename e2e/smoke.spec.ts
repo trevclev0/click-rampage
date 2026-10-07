@@ -5,7 +5,10 @@ test.describe("@smoke", () => {
     await page.goto("/");
 
     await expect(
-      page.getByRole("heading", { name: "Click Rampage" }),
+      page.getByRole("link", { name: "Click Rampage" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Get ready to rampage" }),
     ).toBeVisible();
     await expect(page.getByRole("status")).toContainText("API ok");
   });
