@@ -9,7 +9,7 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   return (
     <section className={styles.page}>
-      <h1 className={styles.title}>Click Rampage</h1>
+      <h1 className={styles.title}>Get ready to rampage</h1>
       <p className={styles.lead}>
         A real-time multiplayer click counter. The game is on its way.
       </p>
