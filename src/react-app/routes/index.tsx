@@ -1,6 +1,7 @@
 import { ClickButton } from "@components/ClickButton";
 import { HealthStatus } from "@components/HealthStatus";
 import { PlayerGrid } from "@components/PlayerGrid";
+import { RenameDialog } from "@components/RenameDialog";
 import { RoomDebug } from "@components/RoomDebug";
 import { YourCount } from "@components/YourCount";
 import { createFileRoute } from "@tanstack/react-router";
@@ -20,6 +21,7 @@ function HomePage() {
       <div className={styles.game}>
         <YourCount />
         <ClickButton />
+        <RenameDialog />
       </div>
       <PlayerGrid />
       <HealthStatus />

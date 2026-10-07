@@ -20,7 +20,8 @@ const UNSAFE_CHARS = /[\p{Cc}\p{Cf}]/gu;
 // Counts what a person sees as one character (👍🏽 is two code points but
 // one grapheme), so the length limit matches the visible name.
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-const visibleLength = (text: string) => [...graphemes.segment(text)].length;
+export const visibleLength = (text: string) =>
+  [...graphemes.segment(text)].length;
 
 /**
  * Cleans a requested display name. Returns `null` when nothing usable is
