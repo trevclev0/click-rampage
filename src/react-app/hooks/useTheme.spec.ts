@@ -117,4 +117,37 @@ describe("useTheme", () => {
     expect(setItem).toHaveBeenCalled();
     expect(result.current.theme).toBe("dark");
   });
+
+  it("applies a toggle that fails to save over an older saved choice", () => {
+    stubSystemTheme("light");
+    vi.stubGlobal("localStorage", {
+      getItem: () => "dark",
+      setItem: () => {
+        throw new Error("quota exceeded");
+      },
+    });
+
+    const { result } = renderHook(() => useTheme());
+    expect(result.current.theme).toBe("dark");
+
+    act(() => result.current.toggleTheme());
+
+    expect(result.current.theme).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
+
+  it("follows the OS again when the saved choice is cleared elsewhere", () => {
+    stubSystemTheme("light");
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("dark");
+
+    act(() => {
+      localStorage.removeItem(THEME_STORAGE_KEY);
+      window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    });
+
+    expect(result.current.theme).toBe("light");
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+  });
 });

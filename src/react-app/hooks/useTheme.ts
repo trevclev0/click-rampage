@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 export type Theme = "light" | "dark";
 
@@ -35,11 +41,13 @@ function subscribe(onChange: () => void) {
 export function useTheme() {
   const stored = useSyncExternalStore(subscribe, readStoredTheme);
   const system = useSyncExternalStore(subscribe, systemTheme);
-  // Holds the choice when storage is blocked; setting it also re-renders
-  // this tab after a successful save (the storage event only fires in
-  // other tabs).
+  // A choice that couldn't be saved (storage blocked or full). It wins over
+  // any older saved value, and is dropped once a save succeeds.
   const [unsaved, setUnsaved] = useState<Theme | null>(null);
-  const choice = stored ?? unsaved;
+  // A successful save fires `storage` only in other tabs, so this tab
+  // re-renders itself to pick up the new value.
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  const choice = unsaved ?? stored;
   const theme = choice ?? system;
 
   // Only an explicit choice pins the theme; without one, the CSS media
@@ -57,10 +65,12 @@ export function useTheme() {
     const next: Theme = theme === "dark" ? "light" : "dark";
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next);
+      setUnsaved(null);
+      rerender();
     } catch {
-      // Storage blocked: the choice still applies for this visit.
+      // Storage blocked or full: the choice still applies for this visit.
+      setUnsaved(next);
     }
-    setUnsaved(next);
   }, [theme]);
 
   return { theme, toggleTheme };
