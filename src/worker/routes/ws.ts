@@ -22,7 +22,21 @@ export const wsRouter = new Hono<AppEnv>().get("/", async (c) => {
 
   const headers = new Headers(c.req.raw.headers);
   headers.set(PLAYER_ID_HEADER, c.get("playerId"));
-  return c.env.ROOM.getByName(ROOM_NAME).fetch(
+  const upgrade = await c.env.ROOM.getByName(ROOM_NAME).fetch(
     new Request(c.req.raw, { headers }),
   );
+
+  // Returning the Room's response as-is would drop the cookie that
+  // playerMiddleware minted on a first visit, so the next reconnect would
+  // arrive as a new player. Copy it onto the 101, keeping the socket.
+  const responseHeaders = new Headers(upgrade.headers);
+  for (const cookie of c.res.headers.getSetCookie()) {
+    responseHeaders.append("set-cookie", cookie);
+  }
+  return new Response(upgrade.body, {
+    status: upgrade.status,
+    statusText: upgrade.statusText,
+    headers: responseHeaders,
+    webSocket: upgrade.webSocket,
+  });
 });
