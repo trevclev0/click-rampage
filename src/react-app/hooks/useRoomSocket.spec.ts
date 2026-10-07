@@ -2,6 +2,7 @@ import { MockWebSocket } from "@test-utils/mockWebSocket";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CONNECT_TIMEOUT_MS,
   PING_INTERVAL_MS,
   PONG_TIMEOUT_MS,
   retryDelay,
@@ -140,6 +141,34 @@ describe("useRoomSocket", () => {
     expect(result.current.status).toBe("connecting");
     act(() => vi.advanceTimersByTime(1_000));
     expect(MockWebSocket.instances).toHaveLength(2);
+  });
+
+  it("gives up on a socket that never opens and retries", () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    const { result } = renderHook(() => useRoomSocket());
+    const stalled = MockWebSocket.latest();
+
+    act(() => vi.advanceTimersByTime(CONNECT_TIMEOUT_MS));
+
+    expect(stalled.readyState).toBe(MockWebSocket.CLOSED);
+    expect(result.current.status).toBe("connecting");
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(MockWebSocket.instances).toHaveLength(2);
+  });
+
+  it("keeps a socket that opens before the connect deadline", () => {
+    renderHook(() => useRoomSocket());
+    const socket = MockWebSocket.latest();
+
+    act(() => vi.advanceTimersByTime(CONNECT_TIMEOUT_MS - 1));
+    act(() => {
+      socket.open();
+      socket.receive({ type: "pong", t: 1_000 });
+      vi.advanceTimersByTime(CONNECT_TIMEOUT_MS);
+    });
+
+    expect(socket.readyState).toBe(MockWebSocket.OPEN);
+    expect(MockWebSocket.instances).toHaveLength(1);
   });
 
   it("keeps a connection whose pings are answered", () => {

@@ -2,6 +2,7 @@ import { type ClientMessage, parseServerMessage } from "@shared/protocol";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { initialRoomState, roomReducer } from "./roomReducer";
 
+export const CONNECT_TIMEOUT_MS = 10_000;
 export const PING_INTERVAL_MS = 30_000;
 export const PONG_TIMEOUT_MS = 10_000;
 export const STABLE_CONNECTION_MS = 10_000;
@@ -50,6 +51,7 @@ export function useRoomSocket() {
       socketRef.current = socket;
 
       let closed = false;
+      let connectDeadline: ReturnType<typeof setTimeout> | undefined;
       let pingTimer: ReturnType<typeof setInterval> | undefined;
       let pongDeadline: ReturnType<typeof setTimeout> | undefined;
       let stableTimer: ReturnType<typeof setTimeout> | undefined;
@@ -60,6 +62,7 @@ export function useRoomSocket() {
       const handleClose = () => {
         if (closed) return;
         closed = true;
+        clearTimeout(connectDeadline);
         clearInterval(pingTimer);
         clearTimeout(pongDeadline);
         clearTimeout(stableTimer);
@@ -74,6 +77,10 @@ export function useRoomSocket() {
       };
       closeCurrent = handleClose;
 
+      // An upgrade that stalls may never fire open or close, so give up on it
+      // and retry rather than sit at "connecting" until the browser times out.
+      connectDeadline = setTimeout(handleClose, CONNECT_TIMEOUT_MS);
+
       // A half-open connection never fires close, so an unanswered ping is
       // treated as a drop.
       const ping = () => {
@@ -82,6 +89,7 @@ export function useRoomSocket() {
       };
 
       socket.onopen = () => {
+        clearTimeout(connectDeadline);
         ping();
         pingTimer = setInterval(ping, PING_INTERVAL_MS);
         // Only a connection that stays up resets the backoff; one that
