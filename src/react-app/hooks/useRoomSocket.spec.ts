@@ -116,10 +116,12 @@ describe("useRoomSocket", () => {
 
   it("disconnect() closes without retrying; connect() reopens", () => {
     const { result, socket } = connect();
+    expect(result.current.enabled).toBe(true);
 
     act(() => result.current.disconnect());
     expect(socket.readyState).toBe(MockWebSocket.CLOSED);
     expect(result.current.status).toBe("disconnected");
+    expect(result.current.enabled).toBe(false);
     expect(result.current.you).toEqual(you);
 
     act(() => vi.advanceTimersByTime(60_000));
@@ -128,6 +130,7 @@ describe("useRoomSocket", () => {
     act(() => result.current.connect());
     expect(MockWebSocket.instances).toHaveLength(2);
     expect(result.current.status).toBe("connecting");
+    expect(result.current.enabled).toBe(true);
   });
 
   it("treats an unanswered ping as a drop and reconnects", () => {

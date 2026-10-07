@@ -114,7 +114,9 @@ export function useRoomSocket() {
   const connect = useCallback(() => setEnabled(true), []);
   const disconnect = useCallback(() => setEnabled(false), []);
 
-  return { ...state, send, connect, disconnect };
+  // `enabled` is whether the player wants to be connected; `status` is
+  // whether they are right now.
+  return { ...state, enabled, send, connect, disconnect };
 }
 
 export type RoomSocket = ReturnType<typeof useRoomSocket>;

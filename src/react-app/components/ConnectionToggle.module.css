@@ -1,0 +1,52 @@
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface);
+  color: var(--color-muted);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  border-color: var(--color-accent);
+}
+
+.toggle[aria-checked="true"] {
+  color: var(--color-text);
+}
+
+.dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.toggle[data-status="connected"] .dot {
+  border-color: var(--color-ok);
+  background-color: var(--color-ok);
+}
+
+.toggle[data-status="connecting"] .dot {
+  border-color: var(--color-highlight);
+  background-color: var(--color-highlight);
+  animation: pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle[data-status="connecting"] .dot {
+    animation: none;
+  }
+}

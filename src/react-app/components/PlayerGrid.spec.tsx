@@ -6,7 +6,9 @@ import {
   renderWithRoom,
 } from "@test-utils/roomTestUtils";
 import { act, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { ConnectionToggle } from "./ConnectionToggle";
 import { PlayerGrid } from "./PlayerGrid";
 
 const you = makePlayer({ name: "Me", count: 5 });
@@ -67,5 +69,22 @@ describe("PlayerGrid", () => {
 
     expect(heading()).toHaveTextContent("0 players online");
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("says you're offline after you disconnect", async () => {
+    const user = userEvent.setup();
+    renderWithRoom(
+      <>
+        <ConnectionToggle />
+        <PlayerGrid />
+      </>,
+    );
+    joinRoom(you);
+
+    await user.click(screen.getByRole("switch", { name: "Live" }));
+
+    expect(
+      screen.getByText("You're offline. Switch Live back on to rejoin."),
+    ).toBeInTheDocument();
   });
 });
