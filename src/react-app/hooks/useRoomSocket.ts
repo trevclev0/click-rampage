@@ -116,3 +116,5 @@ export function useRoomSocket() {
 
   return { ...state, send, connect, disconnect };
 }
+
+export type RoomSocket = ReturnType<typeof useRoomSocket>;
