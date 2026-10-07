@@ -68,3 +68,16 @@ export function parseClientMessage(
   const result = clientMessageSchema.safeParse(json);
   return result.success ? result.data : null;
 }
+
+/** Parses a raw server frame on the client; `null` means non-JSON or invalid. */
+export function parseServerMessage(raw: unknown): ServerMessage | null {
+  if (typeof raw !== "string") return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const result = serverMessageSchema.safeParse(json);
+  return result.success ? result.data : null;
+}

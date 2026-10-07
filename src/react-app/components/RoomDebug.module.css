@@ -1,0 +1,16 @@
+.debug {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background-color: var(--color-surface);
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+}
+
+.debug dd {
+  margin: 0;
+  color: var(--color-text);
+}

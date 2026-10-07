@@ -1,4 +1,5 @@
 import { HealthStatus } from "@components/HealthStatus";
+import { RoomDebug } from "@components/RoomDebug";
 import { createFileRoute } from "@tanstack/react-router";
 import styles from "./index.module.css";
 
@@ -14,6 +15,7 @@ function HomePage() {
         A real-time multiplayer click counter. The game is on its way.
       </p>
       <HealthStatus />
+      <RoomDebug />
     </section>
   );
 }
