@@ -44,6 +44,18 @@
   --space-5: 2rem;
   --space-6: 3rem;
 
+  /* Avatar backgrounds, the same in both themes. White initials stay above
+     4.5:1 contrast on every one. */
+  --avatar-0: #c2185b;
+  --avatar-1: #7b1fa2;
+  --avatar-2: #3949ab;
+  --avatar-3: #0277bd;
+  --avatar-4: #00796b;
+  --avatar-5: #2e7d32;
+  --avatar-6: #b45309;
+  --avatar-7: #c62828;
+  --avatar-text: #ffffff;
+
   --radius: 0.75rem;
   --radius-pill: 999px;
   --content-width: 56rem;

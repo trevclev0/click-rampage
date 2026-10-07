@@ -1,7 +1,6 @@
 import { useRoom } from "@hooks/useRoom";
+import { formatCount } from "./playerDisplay";
 import styles from "./YourCount.module.css";
-
-const formatCount = new Intl.NumberFormat();
 
 export function YourCount() {
   const { you } = useRoom();
@@ -10,7 +9,7 @@ export function YourCount() {
     <div className={styles.count} role="status" aria-label="Your clicks">
       {/* A new key per count remounts the number, replaying the bounce. */}
       <span key={you?.count} className={styles.value}>
-        {you ? formatCount.format(you.count) : "—"}
+        {you ? formatCount(you.count) : "—"}
       </span>{" "}
       <span className={styles.label}>
         {you?.count === 1 ? "click" : "clicks"}

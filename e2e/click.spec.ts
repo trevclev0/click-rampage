@@ -14,4 +14,10 @@ test("clicking the button bumps your count", async ({ page }) => {
 
   await button.click();
   await expect(count).toHaveText("2 clicks");
+
+  // Your card in the online grid follows along.
+  const yourCard = page
+    .getByRole("listitem")
+    .filter({ has: page.getByText("You", { exact: true }) });
+  await expect(yourCard).toContainText("2 clicks");
 });
