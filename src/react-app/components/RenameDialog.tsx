@@ -143,6 +143,10 @@ export function RenameDialog() {
             id={inputId}
             className={styles.input}
             value={draft}
+            // Locked while a save is in flight: an edit would drop the
+            // pending rename, so its confirmation could no longer close
+            // the dialog. Editing after a rejection clears the error.
+            readOnly={saving}
             onChange={(event) => {
               setDraft(event.target.value);
               setPending(null);
