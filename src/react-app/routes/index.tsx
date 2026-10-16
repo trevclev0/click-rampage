@@ -1,5 +1,6 @@
 import { ClickButton } from "@components/ClickButton";
 import { HealthStatus } from "@components/HealthStatus";
+import { PlayerGrid } from "@components/PlayerGrid";
 import { RoomDebug } from "@components/RoomDebug";
 import { YourCount } from "@components/YourCount";
 import { createFileRoute } from "@tanstack/react-router";
@@ -20,6 +21,7 @@ function HomePage() {
         <YourCount />
         <ClickButton />
       </div>
+      <PlayerGrid />
       <HealthStatus />
       <RoomDebug />
     </section>
