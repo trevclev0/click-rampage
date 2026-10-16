@@ -41,22 +41,29 @@ function subscribe(onChange: () => void) {
 export function useTheme() {
   const stored = useSyncExternalStore(subscribe, readStoredTheme);
   const system = useSyncExternalStore(subscribe, systemTheme);
-  // A choice that couldn't be saved (storage blocked or full), and the
-  // saved value it was made over. It wins only while storage still holds
-  // that older value: once storage moves on (another tab saves or clears
-  // it), it is dropped for good. It is also dropped once a save succeeds.
-  const [unsaved, setUnsaved] = useState<{
-    theme: Theme;
-    over: Theme | null;
-  } | null>(null);
+  // A choice that couldn't be saved (storage blocked or full). It wins
+  // over the saved value until a save here succeeds or another tab saves
+  // or clears the theme.
+  const [unsaved, setUnsaved] = useState<Theme | null>(null);
   // A successful save fires `storage` only in other tabs, so this tab
   // re-renders itself to pick up the new value.
   const [, rerender] = useReducer((n: number) => n + 1, 0);
-  // Storage moved on, so the unsaved choice is stale: drop it during render
-  // so a later save of the value it was made over can't bring it back.
-  if (unsaved && unsaved.over !== stored) setUnsaved(null);
-  const choice = unsaved && unsaved.over === stored ? unsaved.theme : stored;
+  const choice = unsaved ?? stored;
   const theme = choice ?? system;
+
+  // Another tab saving or clearing the theme is a newer choice, so the
+  // event itself drops the unsaved one. Comparing values can't tell: two
+  // quick saves can end on the value this choice was made over.
+  useEffect(() => {
+    if (!unsaved) return;
+    const drop = (event: StorageEvent) => {
+      if (event.key === null || event.key === THEME_STORAGE_KEY) {
+        setUnsaved(null);
+      }
+    };
+    window.addEventListener("storage", drop);
+    return () => window.removeEventListener("storage", drop);
+  }, [unsaved]);
 
   // Only an explicit choice pins the theme; without one, the CSS media
   // query keeps following the OS.
@@ -77,9 +84,9 @@ export function useTheme() {
       rerender();
     } catch {
       // Storage blocked or full: the choice still applies for this visit.
-      setUnsaved({ theme: next, over: stored });
+      setUnsaved(next);
     }
-  }, [theme, stored]);
+  }, [theme]);
 
   return { theme, toggleTheme };
 }

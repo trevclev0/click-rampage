@@ -216,6 +216,26 @@ describe("useTheme", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
+  it("drops a failed toggle even when both saves land before the events", () => {
+    stubSystemTheme("light");
+    const { store } = stubFlakyStorage("dark");
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("light");
+
+    // Another tab saves light, then dark, before this tab handles either
+    // event, so every read already sees dark: only the events say so.
+    store.set(THEME_STORAGE_KEY, "light");
+    store.set(THEME_STORAGE_KEY, "dark");
+    act(() => {
+      notifyStorageChange(THEME_STORAGE_KEY);
+      notifyStorageChange(THEME_STORAGE_KEY);
+    });
+
+    expect(result.current.theme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
   it("follows the OS when cleared elsewhere after a failed toggle", () => {
     stubSystemTheme("light");
     const { store } = stubFlakyStorage("light");
