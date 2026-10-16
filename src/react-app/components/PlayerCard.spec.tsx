@@ -2,6 +2,7 @@ import { makePlayer } from "@test-utils/roomTestUtils";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { PlayerCard } from "./PlayerCard";
+import { avatarTone } from "./playerDisplay";
 
 const player = makePlayer({
   id: "c0ffee".padEnd(32, "0"),
@@ -23,6 +24,21 @@ describe("PlayerCard", () => {
   it("marks your own card", () => {
     render(<PlayerCard player={player} isYou />);
     expect(screen.getByText("You")).toBeInTheDocument();
+  });
+
+  it("colours the avatar from the player's id", () => {
+    const other = makePlayer({ name: "Other Player" });
+    // Two ids with different tones, so a fixed tone could not pass.
+    expect(avatarTone(other.id)).not.toBe(avatarTone(player.id));
+
+    render(<PlayerCard player={player} isYou={false} />);
+    render(<PlayerCard player={other} isYou={false} />);
+
+    // CSS Modules hash class names in tests (`_tone0_<hash>`), so match
+    // the local name, not the full class.
+    const tone = (id: string) => new RegExp(`tone${avatarTone(id)}(?!\\d)`);
+    expect(screen.getByText("CQ").className).toMatch(tone(player.id));
+    expect(screen.getByText("OP").className).toMatch(tone(other.id));
   });
 
   it("uses the singular for one click", () => {
