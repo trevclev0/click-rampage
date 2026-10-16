@@ -180,6 +180,32 @@ describe("Room write batching", () => {
     expect(await runInDurableObject(stub, () => vi.getTimerCount())).toBe(0);
   });
 
+  it("backs off after a failed departure write, too", async () => {
+    const stub = room();
+    const watcher = await connectToRoom(stub, newPlayerId());
+    await watcher.next(); // welcome
+    const visitor = await connectToRoom(stub, newPlayerId());
+    await visitor.next(); // welcome
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    freezeTime();
+
+    // The click arms the normal 1 s timer; the departure write then fails.
+    visitor.send({ type: "increment" });
+    await drain(visitor);
+    await runInDurableObject(stub, (_, state) => {
+      state.storage.sql.exec("ALTER TABLE players RENAME TO players_away");
+    });
+    visitor.close();
+    await nextOfType(watcher, "player_left");
+    expect(errors).toHaveBeenCalledOnce();
+
+    // One failure means a 2 s wait, not the 1 s timer the click armed.
+    await advanceTime(stub, FLUSH_INTERVAL_MS);
+    expect(errors).toHaveBeenCalledOnce();
+    await advanceTime(stub, FLUSH_INTERVAL_MS);
+    expect(errors).toHaveBeenCalledTimes(2);
+  });
+
   it("leaves a departure during backoff to the retry", async () => {
     const stub = room();
     const leaver = newPlayerId();

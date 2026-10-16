@@ -316,6 +316,9 @@ export class Room extends DurableObject<Env> {
     } catch (error) {
       this.#failures += 1;
       logFlushError(error, this.#dirty.size, this.#failures);
+      // A failed departure write can leave the normal 1 s timer pending;
+      // replace it so the retry really backs off.
+      this.#cancelFlush();
       this.#scheduleFlush();
       return 0;
     }
