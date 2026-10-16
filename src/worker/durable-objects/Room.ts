@@ -19,6 +19,13 @@ export const MAX_INCREMENTS_PER_SECOND = 20;
 export const FLUSH_INTERVAL_MS = 1000;
 
 /**
+ * Longest wait between retries while flushes keep failing. Retries back off
+ * from {@link FLUSH_INTERVAL_MS}, doubling per consecutive failure, so a Room
+ * stuck behind the daily write cap does not retry and log every second.
+ */
+const MAX_FLUSH_RETRY_MS = 60_000;
+
+/**
  * Per-socket state. Stored with serializeAttachment because instance fields
  * are lost when the Room hibernates.
  */
@@ -49,8 +56,11 @@ export type RenameResult =
  *
  * Trade-off: if the instance is evicted or crashes (deploy, restart) before
  * a flush, up to ~1 s of clicks is lost, and clients may already have seen
- * the lost counts. Hibernation does not lose them: a pending flush timer
- * keeps the instance from hibernating until the timer has run.
+ * the lost counts. While writes keep failing (e.g. the Free daily write
+ * cap), clicks stay only in memory until a flush succeeds, and an eviction
+ * then loses all of them. Hibernation does not lose them: a pending flush
+ * timer keeps the instance from hibernating, so the Room stays in memory
+ * (and is billed duration) for as long as it holds dirty counts.
  *
  * Callers are trusted Worker code: `id` is always the server-issued player
  * id, never a value taken from a client message.
@@ -66,6 +76,8 @@ export class Room extends DurableObject<Env> {
   /** Cache entries whose count is ahead of SQLite. */
   #dirty = new Set<Player>();
   #flushTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Flushes failed in a row; sets the retry backoff. */
+  #failures = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -172,9 +184,11 @@ export class Room extends DurableObject<Env> {
   }
 
   /**
-   * Once the player's last socket has gone: flushes now rather than on the
-   * next tick, drops them from the cache (so it only grows with who is
-   * online) and sends `player_left`.
+   * Once the player's last socket has gone: writes their count now rather
+   * than on the next tick, drops them from the cache (so it only grows with
+   * who is online) and sends `player_left`. Only the leaving player is
+   * written; other dirty players wait for the shared timer, so reconnects
+   * do not cost every active clicker an extra row.
    */
   #handleDisconnect(ws: WebSocket) {
     const { playerId } = ws.deserializeAttachment() as SocketAttachment;
@@ -183,9 +197,9 @@ export class Room extends DurableObject<Env> {
     );
     if (stillOnline) return;
 
-    this.flush();
     const player = this.#players.get(playerId);
-    // A failed flush leaves the player dirty; keep them until one succeeds.
+    if (player && this.#dirty.has(player)) this.#write([player]);
+    // A failed write leaves the player dirty; keep them until one succeeds.
     if (player && !this.#dirty.has(player)) this.#players.delete(playerId);
     this.#broadcast({ type: "player_left", id: playerId }, ws);
   }
@@ -254,21 +268,26 @@ export class Room extends DurableObject<Env> {
     return { ok: true, player: { ...player } };
   }
 
-  /**
-   * Writes every dirty count to SQLite in one transaction, one row per
-   * player, and returns the rows written. On failure the counts stay dirty
-   * and the next tick retries, so a storage error (such as hitting the
-   * daily write limit) delays persistence instead of breaking the Room.
-   */
+  /** Writes every dirty count to SQLite now (see `#write`). */
   flush(): number {
     this.#cancelFlush();
-    if (this.#dirty.size === 0) return 0;
+    return this.#write([...this.#dirty]);
+  }
+
+  /**
+   * Writes the players' counts in one transaction, one row per player, and
+   * returns the rows written. On failure they stay dirty and a retry is
+   * scheduled with backoff, so a storage error (such as hitting the daily
+   * write limit) delays persistence instead of breaking the Room.
+   */
+  #write(players: Player[]): number {
+    if (players.length === 0) return 0;
 
     try {
       const written = this.ctx.storage.transactionSync(() => {
         const now = Date.now();
         let rows = 0;
-        for (const player of this.#dirty) {
+        for (const player of players) {
           rows += this.ctx.storage.sql.exec(
             "UPDATE players SET count = ?, updated_at = ? WHERE id = ?",
             player.count,
@@ -278,23 +297,33 @@ export class Room extends DurableObject<Env> {
         }
         return rows;
       });
-      this.#dirty.clear();
+      for (const player of players) this.#dirty.delete(player);
+      // After a recovery, drop any long backoff timer and retry the rest on
+      // the normal cadence; with nothing dirty, let the Room hibernate.
+      if (this.#failures > 0 || this.#dirty.size === 0) this.#cancelFlush();
+      this.#failures = 0;
+      if (this.#dirty.size > 0) this.#scheduleFlush();
       return written;
     } catch (error) {
-      logFlushError(error, this.#dirty.size);
+      this.#failures += 1;
+      logFlushError(error, this.#dirty.size, this.#failures);
       this.#scheduleFlush();
       return 0;
     }
   }
 
   /**
-   * Arms the flush timer unless one is pending. An in-memory timer, not
-   * `setAlarm`: every alarm is billed as a row written, which would undo
-   * the batching.
+   * Arms the flush timer unless one is pending, backing off while flushes
+   * fail. An in-memory timer, not `setAlarm`: every alarm is billed as a
+   * row written, which would undo the batching.
    */
   #scheduleFlush() {
     if (this.#flushTimer !== undefined) return;
-    this.#flushTimer = setTimeout(() => this.flush(), FLUSH_INTERVAL_MS);
+    const delay = Math.min(
+      FLUSH_INTERVAL_MS * 2 ** this.#failures,
+      MAX_FLUSH_RETRY_MS,
+    );
+    this.#flushTimer = setTimeout(() => this.flush(), delay);
   }
 
   #cancelFlush() {
@@ -341,14 +370,22 @@ function send(ws: WebSocket, message: ServerMessage) {
   ws.send(JSON.stringify(message));
 }
 
-/** One structured line per failed flush, like `utils/errorHandler.ts`. */
-function logFlushError(error: unknown, pendingPlayers: number) {
+/**
+ * One structured line per failed flush, like `utils/errorHandler.ts`. The
+ * retry backoff bounds how often this runs while writes keep failing.
+ */
+function logFlushError(
+  error: unknown,
+  pendingPlayers: number,
+  failures: number,
+) {
   console.error(
     JSON.stringify({
       ts: new Date().toISOString(),
       level: "error",
       event: "room_flush_failed",
       pendingPlayers,
+      failures,
       message: sanitizeErrorText(
         error instanceof Error ? error.message : error,
       ),

@@ -113,6 +113,37 @@ describe("Room write batching", () => {
     expect(rowsWritten()).toBe(1);
   });
 
+  it("flushes on a fixed cadence, one row per dirty player", async () => {
+    const stub = room();
+    const id = newPlayerId();
+    const idle = await connectToRoom(stub, newPlayerId()); // cached, never clicks
+    await idle.next(); // welcome
+    const socket = await connectToRoom(stub, id);
+    await socket.next(); // welcome
+    const rowsWritten = await runInDurableObject(stub, (_, state) =>
+      trackRowsWritten(state),
+    );
+    freezeTime();
+    const click = async () => {
+      socket.send({ type: "increment" });
+      await drain(socket);
+    };
+
+    await click();
+    await advanceTime(stub, FLUSH_INTERVAL_MS - 1);
+    expect(rowsWritten()).toBe(0); // not before the interval
+    await click();
+    await advanceTime(stub, 1);
+    // Steady clicking does not push the flush back, and the idle player
+    // is not rewritten.
+    expect(await readStoredCount(stub, id)).toBe(2);
+    expect(rowsWritten()).toBe(1);
+    await click();
+    await advanceTime(stub, FLUSH_INTERVAL_MS);
+    expect(await readStoredCount(stub, id)).toBe(3); // the timer re-arms
+    expect(rowsWritten()).toBe(2);
+  });
+
   it("keeps flushed counts when the instance is evicted", async () => {
     const name = crypto.randomUUID();
     const stub = env.ROOM.getByName(name);
@@ -143,36 +174,102 @@ describe("Room write batching", () => {
     expect(await readStoredCount(stub, id)).toBe(3);
   });
 
-  it("keeps counts dirty when a flush fails, then retries", async () => {
+  it("writes only the leaving player when their last socket closes", async () => {
+    const stub = room();
+    const clicker = newPlayerId();
+    const leaver = newPlayerId();
+    const socket = await connectToRoom(stub, clicker);
+    await socket.next(); // welcome
+    const visitor = await connectToRoom(stub, leaver);
+    await visitor.next(); // welcome
+    const rowsWritten = await runInDurableObject(stub, (_, state) =>
+      trackRowsWritten(state),
+    );
+    freezeTime(); // so the shared timer cannot write anything
+
+    socket.send({ type: "increment" });
+    await drain(socket);
+    visitor.send({ type: "increment" });
+    await drain(visitor);
+    visitor.close();
+    await nextOfType(socket, "player_left");
+
+    expect(await readStoredCount(stub, leaver)).toBe(1);
+    expect(await readStoredCount(stub, clicker)).toBe(0); // left for the timer
+    expect(rowsWritten()).toBe(1);
+
+    await advanceTime(stub, FLUSH_INTERVAL_MS);
+    expect(await readStoredCount(stub, clicker)).toBe(1);
+    expect(rowsWritten()).toBe(2);
+  });
+
+  it("keeps counts dirty when a flush fails, then retries with backoff", async () => {
     const stub = room();
     const id = newPlayerId();
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logged = (call: number) =>
+      JSON.parse(String(errors.mock.calls[call]?.[0]));
+    freezeTime();
 
     await runInDurableObject(stub, (instance, state) => {
       for (let i = 0; i < 3; i++) instance.increment(id);
       // Hide the table so the real UPDATE fails, as a storage error would.
       state.storage.sql.exec("ALTER TABLE players RENAME TO players_away");
       expect(instance.flush()).toBe(0);
-      state.storage.sql.exec("ALTER TABLE players_away RENAME TO players");
-
-      expect(storedCount(state, id)).toBe(0);
       expect(instance.getOrCreatePlayer(id).count).toBe(3);
     });
 
     expect(errors).toHaveBeenCalledOnce();
-    expect(JSON.parse(String(errors.mock.calls[0]?.[0]))).toMatchObject({
+    expect(logged(0)).toMatchObject({
       level: "error",
       event: "room_flush_failed",
       pendingPlayers: 1,
+      failures: 1,
       message: expect.stringContaining("no such table"),
     });
 
-    // Real time: the failed flush re-armed the timer, and its retry writes.
-    await vi.waitFor(
-      async () => expect(await readStoredCount(stub, id)).toBe(3),
-      { timeout: 3 * FLUSH_INTERVAL_MS, interval: 100 },
-    );
+    // One failure doubles the wait: no retry after one interval, a second
+    // (failing) one after two, and the next after four more.
+    await advanceTime(stub, FLUSH_INTERVAL_MS);
     expect(errors).toHaveBeenCalledOnce();
+    await advanceTime(stub, FLUSH_INTERVAL_MS);
+    expect(errors).toHaveBeenCalledTimes(2);
+    expect(logged(1)).toMatchObject({ failures: 2 });
+
+    await runInDurableObject(stub, (_, state) => {
+      state.storage.sql.exec("ALTER TABLE players_away RENAME TO players");
+    });
+    await advanceTime(stub, 4 * FLUSH_INTERVAL_MS - 1);
+    expect(await readStoredCount(stub, id)).toBe(0);
+    await advanceTime(stub, 1);
+    expect(await readStoredCount(stub, id)).toBe(3);
+    expect(errors).toHaveBeenCalledTimes(2);
+
+    // Success resets the backoff to the normal interval.
+    await stub.increment(id);
+    await advanceTime(stub, FLUSH_INTERVAL_MS);
+    expect(await readStoredCount(stub, id)).toBe(4);
+  });
+
+  it("flushes all dirty players in one transaction", async () => {
+    const stub = room();
+    const a = newPlayerId();
+    const b = newPlayerId();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    freezeTime(); // so the failed flush's retry never runs
+
+    await runInDurableObject(stub, (instance, state) => {
+      instance.increment(a);
+      instance.increment(b);
+      // Only b's UPDATE fails, after a's has run.
+      state.storage.sql.exec(
+        `CREATE TRIGGER fail_b BEFORE UPDATE ON players WHEN NEW.id = '${b}'
+         BEGIN SELECT RAISE(ABORT, 'boom'); END`,
+      );
+      expect(instance.flush()).toBe(0);
+      expect(storedCount(state, a)).toBe(0); // rolled back together with b
+      state.storage.sql.exec("DROP TRIGGER fail_b");
+    });
   });
 
   it("reports unflushed counts in welcome and player_joined", async () => {
