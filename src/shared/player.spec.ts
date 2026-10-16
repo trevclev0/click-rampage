@@ -10,7 +10,9 @@ import {
 describe("cleanPlayerName", () => {
   it("trims and collapses whitespace runs without a length check", () => {
     expect(cleanPlayerName(`  Ab${" ".repeat(20)}Cd\t\n`)).toBe("Ab Cd");
-    expect(cleanPlayerName("x".repeat(MAX_NAME_LENGTH + 5))).toHaveLength(25);
+    expect(cleanPlayerName("x".repeat(MAX_NAME_LENGTH + 5))).toHaveLength(
+      MAX_NAME_LENGTH + 5,
+    );
   });
 
   it("strips control, zero-width and bidi characters", () => {

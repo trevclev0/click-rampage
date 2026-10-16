@@ -18,7 +18,7 @@ interface PendingRename {
 
 type ServerError = NonNullable<RoomState["lastError"]>;
 
-/** Why a cleaned draft can't be sent, or `null` when it can. */
+/** The inline error for a cleaned draft, or `null` when there's none. */
 function draftError(cleaned: string, length: number): string | null {
   if (length > MAX_NAME_LENGTH) {
     return `Use at most ${MAX_NAME_LENGTH} characters.`;
@@ -31,7 +31,7 @@ function draftError(cleaned: string, length: number): string | null {
 
 /** What to show inline when the room answers a save with an error. */
 const rejectionMessage = (error: ServerError) =>
-  error.code === "invalid_name"
+  error.code === "invalid_name" && error.message
     ? error.message
     : "That name couldn't be saved.";
 
@@ -72,7 +72,7 @@ export function RenameDialog() {
   const rejection =
     pending && lastError !== pending.errorBefore ? lastError : null;
   const serverError = rejection && rejectionMessage(rejection);
-  const saving = pending !== null && !confirmed && !serverError;
+  const saving = pending !== null && !confirmed && !rejection;
   const error = invalidDraft ?? serverError;
   const canSave = connected && !saving && name !== null && name !== you?.name;
   const describedBy = [hintId, error && errorId, !connected && noteId]

@@ -199,6 +199,21 @@ describe("RenameDialog", () => {
     expect(save()).toBeEnabled();
   });
 
+  it("ends the save on a rejection with no message", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Quiet");
+    await user.click(save());
+
+    receive({ type: "error", code: "invalid_name", message: "" });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That name couldn't be saved.",
+    );
+    expect(save()).toHaveTextContent("Save");
+    expect(save()).toBeEnabled();
+  });
+
   it("moves focus back to the selected name on a rejection", async () => {
     const { user } = await openDialog();
     await user.clear(input());
