@@ -5,9 +5,9 @@ import {
   receive,
   renderWithRoom,
 } from "@test-utils/roomTestUtils";
-import { act, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RenameDialog } from "./RenameDialog";
 
 const you = makePlayer({ name: "Rage" });
@@ -199,6 +199,20 @@ describe("RenameDialog", () => {
     expect(save()).toBeEnabled();
   });
 
+  it("moves focus back to the selected name on a rejection", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Nope");
+    await user.click(save());
+    expect(input()).not.toHaveFocus();
+
+    receive({ type: "error", code: "invalid_name", message: "Not that" });
+
+    expect(input()).toHaveFocus();
+    expect(input()).toHaveProperty("selectionStart", 0);
+    expect(input()).toHaveProperty("selectionEnd", 4);
+  });
+
   it("ignores an error that arrived before you saved", async () => {
     const { user } = await openDialog();
     receive({
@@ -237,5 +251,32 @@ describe("RenameDialog", () => {
     expect(save()).toHaveTextContent("Save");
     expect(save()).toBeDisabled();
     expect(trigger()).toBeDisabled();
+  });
+
+  describe("while reconnecting", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("says why Save is unavailable until the room is back", () => {
+      const note = "Reconnecting… you can save once you're back online.";
+      renderWithRoom(<RenameDialog />);
+      joinRoom(you);
+      fireEvent.click(trigger());
+      const status = screen.getByRole("status");
+      expect(status).toBeEmptyDOMElement();
+      expect(input()).toHaveAccessibleDescription("4/20 characters");
+
+      act(() => MockWebSocket.latest().drop());
+
+      expect(status).toHaveTextContent(note);
+      expect(input()).toHaveAccessibleDescription(`4/20 characters ${note}`);
+      expect(save()).toBeDisabled();
+
+      act(() => vi.advanceTimersByTime(1_000));
+      joinRoom(you);
+
+      expect(status).toBeEmptyDOMElement();
+      expect(input()).toHaveAccessibleDescription("4/20 characters");
+    });
   });
 });

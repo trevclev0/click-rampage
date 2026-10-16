@@ -57,6 +57,7 @@ export function RenameDialog() {
   const inputId = useId();
   const hintId = useId();
   const errorId = useId();
+  const noteId = useId();
 
   const connected = status === "connected";
   // Measure the name as the server will store it (normalizePlayerName's
@@ -74,11 +75,22 @@ export function RenameDialog() {
   const saving = pending !== null && !confirmed && !serverError;
   const error = invalidDraft ?? serverError;
   const canSave = connected && !saving && name !== null && name !== you?.name;
+  const describedBy = [hintId, error && errorId, !connected && noteId]
+    .filter(Boolean)
+    .join(" ");
 
   // The rename went through: close the dialog (the DOM owns its open state).
   useEffect(() => {
     if (confirmed) dialogRef.current?.close();
   }, [confirmed]);
+
+  // The room refused the name: focus may be stranded on Save or <body>, so
+  // put it back in the field with the text selected, ready to correct.
+  useEffect(() => {
+    if (!rejection) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [rejection]);
 
   const open = () => {
     // Commit the draft first, or select() would act on the old value and
@@ -138,7 +150,7 @@ export function RenameDialog() {
             autoComplete="nickname"
             spellCheck={false}
             aria-invalid={error !== null}
-            aria-describedby={error ? `${hintId} ${errorId}` : hintId}
+            aria-describedby={describedBy}
           />
           <p id={hintId} className={styles.hint}>
             {length}/{MAX_NAME_LENGTH} characters
@@ -148,6 +160,11 @@ export function RenameDialog() {
               {error}
             </p>
           )}
+          {/* Always rendered, so text added on a drop is announced. */}
+          <p id={noteId} className={styles.note} role="status">
+            {!connected &&
+              "Reconnecting… you can save once you're back online."}
+          </p>
           <div className={styles.actions}>
             <button
               type="button"
