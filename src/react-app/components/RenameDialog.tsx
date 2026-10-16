@@ -1,10 +1,11 @@
 import type { RoomState } from "@hooks/roomReducer";
 import { useRoom } from "@hooks/useRoom";
 import {
+  cleanPlayerName,
   MAX_NAME_LENGTH,
-  normalizePlayerName,
   visibleLength,
 } from "@shared/player";
+import { MAX_RENAME_UNITS } from "@shared/protocol";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import styles from "./RenameDialog.module.css";
@@ -14,6 +15,25 @@ interface PendingRename {
   /** The room's last error when we sent, so only a newer one counts. */
   errorBefore: RoomState["lastError"];
 }
+
+type ServerError = NonNullable<RoomState["lastError"]>;
+
+/** The inline error for a cleaned draft, or `null` when there's none. */
+function draftError(cleaned: string, length: number): string | null {
+  if (length > MAX_NAME_LENGTH) {
+    return `Use at most ${MAX_NAME_LENGTH} characters.`;
+  }
+  // Stacked combining marks can fit the visible limit yet overflow the
+  // protocol's bound, and the room would drop the message as invalid.
+  if (cleaned.length > MAX_RENAME_UNITS) return "That name is too long.";
+  return null;
+}
+
+/** What to show inline when the room answers a save with an error. */
+const rejectionMessage = (error: ServerError) =>
+  error.code === "invalid_name" && error.message
+    ? error.message
+    : "That name couldn't be saved.";
 
 /**
  * Your name with a button that opens a native modal <dialog> to change it.
@@ -37,28 +57,40 @@ export function RenameDialog() {
   const inputId = useId();
   const hintId = useId();
   const errorId = useId();
+  const noteId = useId();
 
   const connected = status === "connected";
-  // Same rules the server applies, so a valid draft is what gets stored.
-  const name = normalizePlayerName(draft);
-  const tooLong = visibleLength(draft.trim()) > MAX_NAME_LENGTH;
+  // Measure the name as the server will store it (normalizePlayerName's
+  // rules), so the counter, the error and Save all agree with what is sent.
+  const cleaned = cleanPlayerName(draft);
+  const length = visibleLength(cleaned);
+  const invalidDraft = draftError(cleaned, length);
+  const name = cleaned && !invalidDraft ? cleaned : null;
   const confirmed = pending !== null && you?.name === pending.name;
-  const serverError =
-    pending &&
-    lastError !== pending.errorBefore &&
-    lastError?.code === "invalid_name"
-      ? lastError.message
-      : null;
-  const saving = pending !== null && !confirmed && !serverError;
-  const error = tooLong
-    ? `Use at most ${MAX_NAME_LENGTH} characters.`
-    : serverError;
+  // Any error newer than the save is its answer: a name the room refuses
+  // (invalid_name) or a frame it couldn't parse (invalid_message).
+  const rejection =
+    pending && lastError !== pending.errorBefore ? lastError : null;
+  const serverError = rejection && rejectionMessage(rejection);
+  const saving = pending !== null && !confirmed && !rejection;
+  const error = invalidDraft ?? serverError;
   const canSave = connected && !saving && name !== null && name !== you?.name;
+  const describedBy = [hintId, error && errorId, !connected && noteId]
+    .filter(Boolean)
+    .join(" ");
 
   // The rename went through: close the dialog (the DOM owns its open state).
   useEffect(() => {
     if (confirmed) dialogRef.current?.close();
   }, [confirmed]);
+
+  // The room refused the name: focus may be stranded on Save or <body>, so
+  // put it back in the field with the text selected, ready to correct.
+  useEffect(() => {
+    if (!rejection) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [rejection]);
 
   const open = () => {
     // Commit the draft first, or select() would act on the old value and
@@ -118,16 +150,21 @@ export function RenameDialog() {
             autoComplete="nickname"
             spellCheck={false}
             aria-invalid={error !== null}
-            aria-describedby={error ? `${hintId} ${errorId}` : hintId}
+            aria-describedby={describedBy}
           />
           <p id={hintId} className={styles.hint}>
-            {visibleLength(draft.trim())}/{MAX_NAME_LENGTH} characters
+            {length}/{MAX_NAME_LENGTH} characters
           </p>
           {error && (
             <p id={errorId} className={styles.error} role="alert">
               {error}
             </p>
           )}
+          {/* Always rendered, so text added on a drop is announced. */}
+          <p id={noteId} className={styles.note} role="status">
+            {!connected &&
+              "Reconnecting… you can save once you're back online."}
+          </p>
           <div className={styles.actions}>
             <button
               type="button"

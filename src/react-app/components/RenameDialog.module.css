@@ -83,7 +83,8 @@
 
 .input {
   padding: var(--space-2) var(--space-3);
-  border: 2px solid var(--color-border);
+  /* --color-border is too faint against the dialog for a field's edge. */
+  border: 2px solid var(--color-muted);
   border-radius: var(--radius);
   background-color: var(--color-bg);
   color: var(--color-text);
@@ -95,13 +96,20 @@
 }
 
 .hint,
-.error {
+.error,
+.note {
   margin: 0;
   font-size: var(--text-sm);
 }
 
-.hint {
+.hint,
+.note {
   color: var(--color-muted);
+}
+
+/* The live region stays in the DOM while empty; cancel the gap it adds. */
+.note:empty {
+  margin-top: calc(-1 * var(--space-2));
 }
 
 .error {

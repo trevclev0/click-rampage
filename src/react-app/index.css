@@ -15,8 +15,12 @@
   --color-border: #f1d9c4;
   --color-text: #1d1230;
   --color-muted: #6b5a7e;
-  --color-accent: #e8175d;
-  --color-accent-hover: #c80f4d;
+  /* Small white text sits on the accent, so keep it above 4.5:1: 5.03:1
+     with white, 4.77:1 against --color-bg. The hover shade stays a clear
+     step darker (1.31:1 against the accent) so hover and the button's lip
+     still read. */
+  --color-accent: #d91356;
+  --color-accent-hover: #b80c47;
   --color-accent-contrast: #ffffff;
   --color-highlight: #ffb400;
   --color-ok: #0f8a4b;
