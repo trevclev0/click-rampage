@@ -5,6 +5,7 @@ import {
   MAX_NAME_LENGTH,
   visibleLength,
 } from "@shared/player";
+import { MAX_RENAME_UNITS } from "@shared/protocol";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import styles from "./RenameDialog.module.css";
@@ -14,6 +15,25 @@ interface PendingRename {
   /** The room's last error when we sent, so only a newer one counts. */
   errorBefore: RoomState["lastError"];
 }
+
+type ServerError = NonNullable<RoomState["lastError"]>;
+
+/** Why a cleaned draft can't be sent, or `null` when it can. */
+function draftError(cleaned: string, length: number): string | null {
+  if (length > MAX_NAME_LENGTH) {
+    return `Use at most ${MAX_NAME_LENGTH} characters.`;
+  }
+  // Stacked combining marks can fit the visible limit yet overflow the
+  // protocol's bound, and the room would drop the message as invalid.
+  if (cleaned.length > MAX_RENAME_UNITS) return "That name is too long.";
+  return null;
+}
+
+/** What to show inline when the room answers a save with an error. */
+const rejectionMessage = (error: ServerError) =>
+  error.code === "invalid_name"
+    ? error.message
+    : "That name couldn't be saved.";
 
 /**
  * Your name with a button that opens a native modal <dialog> to change it.
@@ -43,19 +63,16 @@ export function RenameDialog() {
   // rules), so the counter, the error and Save all agree with what is sent.
   const cleaned = cleanPlayerName(draft);
   const length = visibleLength(cleaned);
-  const tooLong = length > MAX_NAME_LENGTH;
-  const name = cleaned && !tooLong ? cleaned : null;
+  const invalidDraft = draftError(cleaned, length);
+  const name = cleaned && !invalidDraft ? cleaned : null;
   const confirmed = pending !== null && you?.name === pending.name;
-  const serverError =
-    pending &&
-    lastError !== pending.errorBefore &&
-    lastError?.code === "invalid_name"
-      ? lastError.message
-      : null;
+  // Any error newer than the save is its answer: a name the room refuses
+  // (invalid_name) or a frame it couldn't parse (invalid_message).
+  const rejection =
+    pending && lastError !== pending.errorBefore ? lastError : null;
+  const serverError = rejection && rejectionMessage(rejection);
   const saving = pending !== null && !confirmed && !serverError;
-  const error = tooLong
-    ? `Use at most ${MAX_NAME_LENGTH} characters.`
-    : serverError;
+  const error = invalidDraft ?? serverError;
   const canSave = connected && !saving && name !== null && name !== you?.name;
 
   // The rename went through: close the dialog (the DOM owns its open state).

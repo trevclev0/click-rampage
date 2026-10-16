@@ -126,6 +126,19 @@ describe("RenameDialog", () => {
     expect(save()).toBeDisabled();
   });
 
+  it("flags a name too long for the wire despite fitting 20", async () => {
+    const { user } = await openDialog();
+
+    // 20 graphemes, each a letter plus 10 combining marks: 220 UTF-16 units.
+    await enterName(user, `e${"\u0301".repeat(10)}`.repeat(20));
+
+    expect(screen.getByText("20/20 characters")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That name is too long.",
+    );
+    expect(save()).toBeDisabled();
+  });
+
   it("sends the trimmed name with Enter and closes once confirmed", async () => {
     const { user, socket } = await openDialog();
 
@@ -163,6 +176,27 @@ describe("RenameDialog", () => {
     // Editing the name clears the old error.
     await user.type(input(), "!");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("treats any other error after Save as a rejection", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Garbled");
+    await user.click(save());
+    expect(save()).toHaveTextContent("Saving…");
+
+    receive({
+      type: "error",
+      code: "invalid_message",
+      message: "Unreadable message",
+    });
+
+    expect(dialog()).toHaveAttribute("open");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That name couldn't be saved.",
+    );
+    expect(save()).toHaveTextContent("Save");
+    expect(save()).toBeEnabled();
   });
 
   it("ignores an error that arrived before you saved", async () => {
