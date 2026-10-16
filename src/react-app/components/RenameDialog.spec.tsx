@@ -155,6 +155,23 @@ describe("RenameDialog", () => {
     expect(screen.getByText("Click Queen")).toBeInTheDocument();
   });
 
+  it("locks the field while a save is in flight", async () => {
+    const { user, socket } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Steady{Enter}");
+    expect(input()).toHaveAttribute("readonly");
+
+    // Typing now must not drop the pending save or allow a second one.
+    await user.type(input(), "!");
+    expect(input()).toHaveValue("Steady");
+    expect(save()).toHaveTextContent("Saving…");
+
+    receive({ type: "renamed", id: you.id, name: "Steady" });
+
+    expect(dialog()).not.toHaveAttribute("open");
+    expect(renames(socket)).toEqual([{ type: "rename", name: "Steady" }]);
+  });
+
   it("shows a server rejection inline and keeps the dialog open", async () => {
     const { user } = await openDialog();
     await user.clear(input());
