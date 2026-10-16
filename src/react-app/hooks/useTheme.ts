@@ -41,13 +41,18 @@ function subscribe(onChange: () => void) {
 export function useTheme() {
   const stored = useSyncExternalStore(subscribe, readStoredTheme);
   const system = useSyncExternalStore(subscribe, systemTheme);
-  // A choice that couldn't be saved (storage blocked or full). It wins over
-  // any older saved value, and is dropped once a save succeeds.
-  const [unsaved, setUnsaved] = useState<Theme | null>(null);
+  // A choice that couldn't be saved (storage blocked or full), and the
+  // saved value it was made over. It wins only while storage still holds
+  // that older value: once storage moves on (another tab saves or clears
+  // it), storage wins again. It is dropped once a save succeeds.
+  const [unsaved, setUnsaved] = useState<{
+    theme: Theme;
+    over: Theme | null;
+  } | null>(null);
   // A successful save fires `storage` only in other tabs, so this tab
   // re-renders itself to pick up the new value.
   const [, rerender] = useReducer((n: number) => n + 1, 0);
-  const choice = unsaved ?? stored;
+  const choice = unsaved && unsaved.over === stored ? unsaved.theme : stored;
   const theme = choice ?? system;
 
   // Only an explicit choice pins the theme; without one, the CSS media
@@ -69,9 +74,9 @@ export function useTheme() {
       rerender();
     } catch {
       // Storage blocked or full: the choice still applies for this visit.
-      setUnsaved(next);
+      setUnsaved({ theme: next, over: stored });
     }
-  }, [theme]);
+  }, [theme, stored]);
 
   return { theme, toggleTheme };
 }
