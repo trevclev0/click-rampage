@@ -196,6 +196,26 @@ describe("useTheme", () => {
     expect(document.documentElement.dataset.theme).toBe("light");
   });
 
+  it("doesn't revive a failed toggle when storage moves back", () => {
+    stubSystemTheme("light");
+    const { store } = stubFlakyStorage("dark");
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("light");
+
+    // Another tab saves light, then dark again: the value the failed
+    // toggle was made over. The newest save still wins.
+    for (const saved of ["light", "dark"] as const) {
+      act(() => {
+        store.set(THEME_STORAGE_KEY, saved);
+        notifyStorageChange(THEME_STORAGE_KEY);
+      });
+    }
+
+    expect(result.current.theme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
   it("follows the OS when cleared elsewhere after a failed toggle", () => {
     stubSystemTheme("light");
     const { store } = stubFlakyStorage("light");
