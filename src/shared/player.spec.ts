@@ -1,9 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
+  cleanPlayerName,
   defaultPlayerName,
   MAX_NAME_LENGTH,
   normalizePlayerName,
+  visibleLength,
 } from "./player";
+
+describe("cleanPlayerName", () => {
+  it("trims and collapses whitespace runs without a length check", () => {
+    expect(cleanPlayerName(`  Ab${" ".repeat(20)}Cd\t\n`)).toBe("Ab Cd");
+    expect(cleanPlayerName("x".repeat(MAX_NAME_LENGTH + 5))).toHaveLength(25);
+  });
+
+  it("strips control, zero-width and bidi characters", () => {
+    expect(cleanPlayerName("Ev\u0000il\u200B\u202EBob\n")).toBe("EvilBob");
+  });
+
+  it("splits ZWJ emoji sequences apart, so they count as more", () => {
+    const coder = "\u{1F469}\u200D\u{1F4BB}"; // 👩‍💻
+
+    expect(visibleLength(coder)).toBe(1);
+    expect(visibleLength(cleanPlayerName(coder))).toBe(2);
+  });
+
+  it("returns an empty string when nothing usable is left", () => {
+    expect(cleanPlayerName(" \u200B\u0007 ")).toBe("");
+  });
+});
 
 describe("normalizePlayerName", () => {
   it("trims and collapses whitespace", () => {

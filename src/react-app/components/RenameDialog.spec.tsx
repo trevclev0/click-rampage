@@ -20,6 +20,12 @@ const save = () => screen.getByRole("button", { name: /^(Save|Saving…)$/ });
 const renames = (socket: MockWebSocket) =>
   socket.sent.filter((m) => (m as { type: string }).type === "rename");
 
+// Pasted rather than typed, so emoji arrive whole.
+async function enterName(user: ReturnType<typeof userEvent.setup>, v: string) {
+  await user.clear(input());
+  await user.paste(v);
+}
+
 async function openDialog() {
   const user = userEvent.setup();
   renderWithRoom(<RenameDialog />);
@@ -70,6 +76,49 @@ describe("RenameDialog", () => {
     await user.clear(input());
     await user.type(input(), "x".repeat(21));
 
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Use at most 20 characters.",
+    );
+    expect(input()).toHaveAttribute("aria-invalid", "true");
+    expect(save()).toBeDisabled();
+  });
+
+  it("counts a skin-toned emoji as one character", async () => {
+    const thumbs = "\u{1F44D}\u{1F3FD}"; // 👍🏽
+    const { user } = await openDialog();
+
+    await enterName(user, thumbs.repeat(20));
+    expect(screen.getByText("20/20 characters")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(save()).toBeEnabled();
+
+    await enterName(user, thumbs.repeat(21));
+    expect(screen.getByText("21/20 characters")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Use at most 20 characters.",
+    );
+    expect(save()).toBeDisabled();
+  });
+
+  it("measures whitespace runs collapsed, as the name is saved", async () => {
+    const { user, socket } = await openDialog();
+
+    await enterName(user, `Ab${" ".repeat(20)}Cd`);
+    expect(screen.getByText("5/20 characters")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(input()).toHaveAttribute("aria-invalid", "false");
+
+    await user.click(save());
+    expect(renames(socket)).toEqual([{ type: "rename", name: "Ab Cd" }]);
+  });
+
+  it("counts ZWJ emoji by part, since joiners are stripped", async () => {
+    const coder = "\u{1F469}\u200D\u{1F4BB}"; // 👩‍💻
+    const { user } = await openDialog();
+
+    await enterName(user, coder.repeat(11));
+
+    expect(screen.getByText("22/20 characters")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Use at most 20 characters.",
     );

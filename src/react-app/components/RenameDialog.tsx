@@ -1,8 +1,8 @@
 import type { RoomState } from "@hooks/roomReducer";
 import { useRoom } from "@hooks/useRoom";
 import {
+  cleanPlayerName,
   MAX_NAME_LENGTH,
-  normalizePlayerName,
   visibleLength,
 } from "@shared/player";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
@@ -39,9 +39,12 @@ export function RenameDialog() {
   const errorId = useId();
 
   const connected = status === "connected";
-  // Same rules the server applies, so a valid draft is what gets stored.
-  const name = normalizePlayerName(draft);
-  const tooLong = visibleLength(draft.trim()) > MAX_NAME_LENGTH;
+  // Measure the name as the server will store it (normalizePlayerName's
+  // rules), so the counter, the error and Save all agree with what is sent.
+  const cleaned = cleanPlayerName(draft);
+  const length = visibleLength(cleaned);
+  const tooLong = length > MAX_NAME_LENGTH;
+  const name = cleaned && !tooLong ? cleaned : null;
   const confirmed = pending !== null && you?.name === pending.name;
   const serverError =
     pending &&
@@ -121,7 +124,7 @@ export function RenameDialog() {
             aria-describedby={error ? `${hintId} ${errorId}` : hintId}
           />
           <p id={hintId} className={styles.hint}>
-            {visibleLength(draft.trim())}/{MAX_NAME_LENGTH} characters
+            {length}/{MAX_NAME_LENGTH} characters
           </p>
           {error && (
             <p id={errorId} className={styles.error} role="alert">
