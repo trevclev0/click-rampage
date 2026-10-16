@@ -1,4 +1,5 @@
 import type { Player } from "@shared/player";
+import { memo } from "react";
 import styles from "./PlayerCard.module.css";
 import { avatarTone, formatCount, initials, shortId } from "./playerDisplay";
 
@@ -7,7 +8,13 @@ interface PlayerCardProps {
   isYou: boolean;
 }
 
-export function PlayerCard({ player, isYou }: PlayerCardProps) {
+// Memoised because every count broadcast re-renders the grid. The room
+// reducer keeps unchanged players by identity, so only the card whose
+// count moved renders again.
+export const PlayerCard = memo(function PlayerCard({
+  player,
+  isYou,
+}: PlayerCardProps) {
   const cardClass = isYou ? `${styles.card} ${styles.you}` : styles.card;
 
   return (
@@ -33,4 +40,4 @@ export function PlayerCard({ player, isYou }: PlayerCardProps) {
       </p>
     </div>
   );
-}
+});
