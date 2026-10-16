@@ -1,9 +1,9 @@
-import { useRoomSocket } from "@hooks/useRoomSocket";
+import { useRoom } from "@hooks/useRoom";
 import styles from "./RoomDebug.module.css";
 
 /** Temporary readout of the room connection; replaced by the real UI. */
 export function RoomDebug() {
-  const { status, you, online, latency } = useRoomSocket();
+  const { status, you, online, latency } = useRoom();
 
   return (
     <dl className={styles.debug} aria-label="Room connection">
