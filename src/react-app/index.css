@@ -15,7 +15,9 @@
   --color-border: #f1d9c4;
   --color-text: #1d1230;
   --color-muted: #6b5a7e;
-  --color-accent: #e8175d;
+  /* Small white text sits on the accent, so keep it above 4.5:1: 5.03:1
+     with white, 4.77:1 against --color-bg. */
+  --color-accent: #d91356;
   --color-accent-hover: #c80f4d;
   --color-accent-contrast: #ffffff;
   --color-highlight: #ffb400;
