@@ -1,5 +1,8 @@
+// Types for `cloudflare:test` in *.integration.spec.ts (workerd pool only).
+/// <reference path="../../../node_modules/@cloudflare/vitest-pool-workers/types/cloudflare-test.d.ts" />
 import { exports } from "cloudflare:workers";
 import type { ServerMessage } from "@shared/protocol";
+import { PLAYER_ID_HEADER } from "@worker/durable-objects/roomConstants";
 
 export const ORIGIN = "http://localhost";
 
@@ -13,6 +16,30 @@ export async function connect(headers: Record<string, string> = {}) {
       headers: { Upgrade: "websocket", Origin: ORIGIN, ...headers },
     }),
   );
+  return open(response);
+}
+
+/**
+ * Like {@link connect}, but straight to one Room as `playerId` (the header
+ * the Worker would set), so a test can use its own Room instead of sharing
+ * the global one.
+ */
+export async function connectToRoom(
+  room: { fetch(request: Request): Promise<Response> },
+  playerId: string,
+) {
+  const response = await room.fetch(
+    new Request(`${ORIGIN}/api/ws`, {
+      headers: { Upgrade: "websocket", [PLAYER_ID_HEADER]: playerId },
+    }),
+  );
+  return open(response);
+}
+
+export type TestSocket = ReturnType<typeof open>;
+
+/** Accepts the client end of an upgrade and queues incoming messages. */
+function open(response: Response) {
   const ws = response.webSocket;
   if (!ws) throw new Error(`Upgrade failed with ${response.status}`);
   ws.accept();
@@ -39,4 +66,20 @@ export async function connect(headers: Record<string, string> = {}) {
         else waiters.push(resolve);
       }),
   };
+}
+
+/**
+ * Reads messages until the pong for a fresh ping. Messages are delivered in
+ * order, so everything returned arrived before the pong — this lets tests
+ * assert that something was NOT sent.
+ */
+export async function drain(socket: TestSocket) {
+  const t = Math.random();
+  socket.send({ type: "ping", t });
+  const seen: ServerMessage[] = [];
+  for (;;) {
+    const message = await socket.next();
+    if (message.type === "pong" && message.t === t) return seen;
+    seen.push(message);
+  }
 }
