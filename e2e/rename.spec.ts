@@ -30,5 +30,13 @@ test("rename yourself using only the keyboard", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
+
+  // Sync point: the room answers frames in order on one socket, so once
+  // this click's count is back, a stray rename would already show.
+  await page.getByRole("button", { name: "Click!" }).click();
+  await expect(page.getByRole("status", { name: "Your clicks" })).toHaveText(
+    "1 click",
+  );
   await expect(page.getByText("Playing as Keyboard Kid")).toBeVisible();
+  await expect(page.getByText("Never Saved")).toHaveCount(0);
 });

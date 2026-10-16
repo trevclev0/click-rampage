@@ -76,8 +76,11 @@
   white-space: nowrap;
 }
 
+/* On a narrow card the badge drops below the id instead of running into
+   the count. */
 .meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
 }
@@ -92,8 +95,13 @@
   font-weight: 700;
 }
 
+/* Like the name, the id gives way to a long count rather than overlap it. */
 .id {
+  min-width: 0;
+  overflow: hidden;
   color: var(--color-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }

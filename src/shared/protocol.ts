@@ -8,6 +8,13 @@ import { z } from "zod";
 /** Messages larger than this (UTF-8 bytes) are rejected before parsing. */
 export const MAX_MESSAGE_BYTES = 1024;
 
+/**
+ * Longest `rename.name` the parser accepts, in UTF-16 code units. The real
+ * limit is normalizePlayerName's visible length on the server; this bound
+ * only keeps junk out of the parser.
+ */
+export const MAX_RENAME_UNITS = 200;
+
 const encoder = new TextEncoder();
 
 const playerSchema = z.object({
@@ -18,9 +25,10 @@ const playerSchema = z.object({
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("increment") }),
-  // Length is enforced by normalizePlayerName on the server; this bound only
-  // keeps junk out of the parser.
-  z.object({ type: z.literal("rename"), name: z.string().max(200) }),
+  z.object({
+    type: z.literal("rename"),
+    name: z.string().max(MAX_RENAME_UNITS),
+  }),
   z.object({ type: z.literal("ping"), t: z.number() }),
 ]);
 
