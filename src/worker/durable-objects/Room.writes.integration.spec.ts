@@ -7,7 +7,11 @@ import {
   type TestSocket,
 } from "@worker/test-utils/socket";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FLUSH_INTERVAL_MS, MAX_INCREMENTS_PER_SECOND } from "./Room";
+import {
+  FLUSH_INTERVAL_MS,
+  MAX_FLUSH_RETRY_MS,
+  MAX_INCREMENTS_PER_SECOND,
+} from "./Room";
 
 // Each test uses its own Room instance (unique name) so dirty counts and
 // flush timers never leak between tests.
@@ -172,6 +176,49 @@ describe("Room write batching", () => {
     await nextOfType(watcher, "player_left");
 
     expect(await readStoredCount(stub, id)).toBe(3);
+    // Nothing is dirty, so no flush timer is left keeping the Room awake.
+    expect(await runInDurableObject(stub, () => vi.getTimerCount())).toBe(0);
+  });
+
+  it("leaves a departure during backoff to the retry", async () => {
+    const stub = room();
+    const leaver = newPlayerId();
+    const watcher = await connectToRoom(stub, newPlayerId());
+    await watcher.next(); // welcome
+    const visitor = await connectToRoom(stub, leaver);
+    await visitor.next(); // welcome
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    freezeTime();
+
+    visitor.send({ type: "increment" });
+    await drain(visitor);
+    await runInDurableObject(stub, (instance, state) => {
+      state.storage.sql.exec("ALTER TABLE players RENAME TO players_away");
+      instance.flush(); // fails: the retry backs off to 2 s
+    });
+    visitor.close();
+    await nextOfType(watcher, "player_left");
+    // The departure adds no failed write (or error line) of its own.
+    expect(errors).toHaveBeenCalledOnce();
+
+    await runInDurableObject(stub, (_, state) => {
+      state.storage.sql.exec("ALTER TABLE players_away RENAME TO players");
+    });
+    await advanceTime(stub, 2 * FLUSH_INTERVAL_MS);
+    expect(await readStoredCount(stub, leaver)).toBe(1);
+
+    // Written and offline, it left the cache: a rejoin reads SQLite.
+    await runInDurableObject(stub, (_, state) => {
+      state.storage.sql.exec(
+        "UPDATE players SET count = 999 WHERE id = ?",
+        leaver,
+      );
+    });
+    const back = await connectToRoom(stub, leaver);
+    expect(await back.next()).toMatchObject({
+      type: "welcome",
+      you: { count: 999 },
+    });
   });
 
   it("writes only the leaving player when their last socket closes", async () => {
@@ -249,6 +296,54 @@ describe("Room write batching", () => {
     await stub.increment(id);
     await advanceTime(stub, FLUSH_INTERVAL_MS);
     expect(await readStoredCount(stub, id)).toBe(4);
+  });
+
+  it("caps the retry backoff", async () => {
+    const stub = room();
+    const id = newPlayerId();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    freezeTime();
+
+    await runInDurableObject(stub, (instance, state) => {
+      instance.increment(id);
+      state.storage.sql.exec("ALTER TABLE players RENAME TO players_away");
+      instance.flush(); // failure 1
+    });
+    // Failures 2-6 come after 2, 4, 8, 16 and 32 s.
+    for (let n = 1; n <= 5; n++) {
+      await advanceTime(stub, FLUSH_INTERVAL_MS * 2 ** n);
+    }
+    expect(errors).toHaveBeenCalledTimes(6);
+
+    // Uncapped, the next wait would be 64 s.
+    await advanceTime(stub, MAX_FLUSH_RETRY_MS);
+    expect(errors).toHaveBeenCalledTimes(7);
+  });
+
+  it("returns to the normal cadence once a rename writes during backoff", async () => {
+    const stub = room();
+    const renamed = newPlayerId();
+    const clicker = newPlayerId();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    freezeTime();
+
+    await runInDurableObject(stub, (instance, state) => {
+      instance.increment(renamed);
+      state.storage.sql.exec("ALTER TABLE players RENAME TO players_away");
+      instance.flush(); // failure 1
+      instance.flush(); // failure 2: the retry backs off to 4 s
+      state.storage.sql.exec("ALTER TABLE players_away RENAME TO players");
+
+      expect(instance.rename(renamed, "Back again")).toMatchObject({
+        ok: true,
+      });
+      // The rename wrote the only dirty count: no backoff timer is left.
+      expect(vi.getTimerCount()).toBe(0);
+      instance.increment(clicker);
+    });
+
+    await advanceTime(stub, FLUSH_INTERVAL_MS);
+    expect(await readStoredCount(stub, clicker)).toBe(1);
   });
 
   it("flushes all dirty players in one transaction", async () => {

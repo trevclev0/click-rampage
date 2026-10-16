@@ -23,7 +23,7 @@ export const FLUSH_INTERVAL_MS = 1000;
  * from {@link FLUSH_INTERVAL_MS}, doubling per consecutive failure, so a Room
  * stuck behind the daily write cap does not retry and log every second.
  */
-const MAX_FLUSH_RETRY_MS = 60_000;
+export const MAX_FLUSH_RETRY_MS = 60_000;
 
 /**
  * Per-socket state. Stored with serializeAttachment because instance fields
@@ -188,7 +188,9 @@ export class Room extends DurableObject<Env> {
    * than on the next tick, drops them from the cache (so it only grows with
    * who is online) and sends `player_left`. Only the leaving player is
    * written; other dirty players wait for the shared timer, so reconnects
-   * do not cost every active clicker an extra row.
+   * do not cost every active clicker an extra row. While a failed flush is
+   * backing off, the leaver waits for that retry instead, so an outage
+   * costs no extra failed write (or error line) per departure.
    */
   #handleDisconnect(ws: WebSocket) {
     const { playerId } = ws.deserializeAttachment() as SocketAttachment;
@@ -198,8 +200,11 @@ export class Room extends DurableObject<Env> {
     if (stillOnline) return;
 
     const player = this.#players.get(playerId);
-    if (player && this.#dirty.has(player)) this.#write([player]);
-    // A failed write leaves the player dirty; keep them until one succeeds.
+    if (player && this.#dirty.has(player) && this.#failures === 0) {
+      this.#write([player]);
+    }
+    // A player still dirty stays cached until a write succeeds; `#write`
+    // drops them then, once they are offline.
     if (player && !this.#dirty.has(player)) this.#players.delete(playerId);
     this.#broadcast({ type: "player_left", id: playerId }, ws);
   }
@@ -265,6 +270,7 @@ export class Room extends DurableObject<Env> {
     );
     player.name = name;
     this.#dirty.delete(player);
+    this.#wrote();
     return { ok: true, player: { ...player } };
   }
 
@@ -297,12 +303,15 @@ export class Room extends DurableObject<Env> {
         }
         return rows;
       });
-      for (const player of players) this.#dirty.delete(player);
-      // After a recovery, drop any long backoff timer and retry the rest on
-      // the normal cadence; with nothing dirty, let the Room hibernate.
-      if (this.#failures > 0 || this.#dirty.size === 0) this.#cancelFlush();
-      this.#failures = 0;
-      if (this.#dirty.size > 0) this.#scheduleFlush();
+      for (const player of players) {
+        this.#dirty.delete(player);
+        // Written after their last socket closed (during an outage): the
+        // cache only holds who is online.
+        if (this.#openSockets(player.id).length === 0) {
+          this.#players.delete(player.id);
+        }
+      }
+      this.#wrote();
       return written;
     } catch (error) {
       this.#failures += 1;
@@ -310,6 +319,18 @@ export class Room extends DurableObject<Env> {
       this.#scheduleFlush();
       return 0;
     }
+  }
+
+  /**
+   * After any successful write (a flush, a departure or a rename): storage
+   * works again, so drop a long backoff timer and retry the rest on the
+   * normal cadence; with nothing dirty, cancel the timer so the Room can
+   * hibernate.
+   */
+  #wrote() {
+    if (this.#failures > 0 || this.#dirty.size === 0) this.#cancelFlush();
+    this.#failures = 0;
+    if (this.#dirty.size > 0) this.#scheduleFlush();
   }
 
   /**
