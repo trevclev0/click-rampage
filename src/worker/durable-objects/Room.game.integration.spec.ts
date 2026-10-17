@@ -1,8 +1,10 @@
+import { runInDurableObject } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import type { ServerMessage } from "@shared/protocol";
 import { derivePlayerId } from "@worker/middleware/player";
-import { connect, drain } from "@worker/test-utils/socket";
+import { connect, connectToRoom, drain } from "@worker/test-utils/socket";
 import { describe, expect, it } from "vitest";
-import { MAX_INCREMENTS_PER_SECOND } from "./Room";
+import { MAX_INCREMENTS_PER_SECOND, Room } from "./Room";
 
 // Every test talks to the shared "global" room through the real worker, so
 // each one uses fresh player tokens and only asserts about its own players.
@@ -163,5 +165,80 @@ describe("Room game loop", () => {
       name: "Hacked",
     });
     expect(seen.some((m) => "id" in m && m.id === victim.id)).toBe(false);
+  });
+});
+
+describe("Room join order", () => {
+  // A Room of its own, so only this test's players are online in it.
+  const room = () => env.ROOM.getByName(crypto.randomUUID());
+  type RoomStub = ReturnType<typeof room>;
+  const newPlayerId = () => crypto.randomUUID().replaceAll("-", "");
+
+  async function joinRoom(stub: Pick<RoomStub, "fetch">, id: string) {
+    const socket = await connectToRoom(stub, id);
+    const welcome = await socket.next();
+    if (welcome.type !== "welcome") throw new Error("expected welcome");
+    return { ...socket, welcome };
+  }
+
+  /** Waits until the Room counts exactly `open` open sockets for `id`. */
+  async function untilOpenSockets(stub: RoomStub, id: string, open: number) {
+    for (let i = 0; i < 50; i++) {
+      const sockets = await runInDurableObject(
+        stub,
+        (_, state) =>
+          state
+            .getWebSockets(id)
+            .filter((ws) => ws.readyState === WebSocket.OPEN).length,
+      );
+      if (sockets === open) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`expected ${open} open sockets for ${id}`);
+  }
+
+  it("welcomes a newcomer with everyone in the order they joined", async () => {
+    const stub = room();
+    const ids = Array.from({ length: 5 }, newPlayerId);
+    for (const id of ids.slice(0, -1)) await joinRoom(stub, id);
+
+    const latecomer = await joinRoom(stub, ids[4]);
+
+    // The order clients that were already online built from player_joined.
+    expect(latecomer.welcome.online.map(({ id }) => id)).toEqual(ids);
+  });
+
+  it("keeps counting joins after the Room wakes from hibernation", async () => {
+    const stub = room();
+    const [alice, bob, carol] = Array.from({ length: 3 }, newPlayerId);
+    await joinRoom(stub, alice);
+    await joinRoom(stub, bob);
+
+    // Waking builds a new instance around the sockets that stayed open.
+    const welcome = await runInDurableObject(stub, async (_, state) => {
+      const woken = new Room(state, env);
+      return (await joinRoom(woken, carol)).welcome;
+    });
+
+    expect(welcome.online.map(({ id }) => id)).toEqual([alice, bob, carol]);
+  });
+
+  it("keeps a player's place when they swap tabs", async () => {
+    const stub = room();
+    const [alice, bob, carol] = Array.from({ length: 3 }, newPlayerId);
+    const firstTab = await joinRoom(stub, alice);
+    await joinRoom(stub, bob);
+    await joinRoom(stub, alice); // a second tab: no player_joined
+
+    firstTab.close();
+    await untilOpenSockets(stub, alice, 1);
+    const latecomer = await joinRoom(stub, carol);
+
+    // Alice never left, so she is still ahead of Bob.
+    expect(latecomer.welcome.online.map(({ id }) => id)).toEqual([
+      alice,
+      bob,
+      carol,
+    ]);
   });
 });
