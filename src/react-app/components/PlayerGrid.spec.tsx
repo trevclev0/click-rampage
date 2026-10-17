@@ -45,7 +45,9 @@ describe("PlayerGrid", () => {
 
   it("reorders live as counts change, moving the same cards", () => {
     renderWithRoom(<PlayerGrid />);
-    joinRoom(you, [ana, you, bo]);
+    // Bo joined before Ana, though Ana comes first by id and by name.
+    joinRoom(you, [bo, you, ana]);
+    expectOrder("Me", "Bo", "Ana");
     const anaCard = card("Ana");
     const boCard = card("Bo");
 
@@ -55,11 +57,9 @@ describe("PlayerGrid", () => {
     expect(card("Ana")).toBe(anaCard);
     expect(card("Bo")).toBe(boCard);
 
-    // A tie keeps join order: Ana joined before Bo.
+    // A tie goes by join order, so Bo moves back above Ana rather than
+    // staying where he was, or sorting by id or name.
     receive({ type: "count", id: bo.id, count: 10 });
-    expectOrder("Me", "Ana", "Bo");
-
-    receive({ type: "count", id: bo.id, count: 11 });
     expectOrder("Me", "Bo", "Ana");
   });
 

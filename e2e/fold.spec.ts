@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 
 // An iPhone 13's visible viewport in Safari. A plain viewport rather than
 // devices["iPhone 13"], which needs WebKit (and Firefox has no isMobile),
-// so this runs in both the Chromium and Firefox projects.
+// so this runs in both the Chromium and Firefox projects. Headless Firefox
+// draws a classic scrollbar, so it lays the page out a little narrower
+// than 390px, which Safari's overlay scrollbar does not.
 test.use({ viewport: { width: 390, height: 664 } });
 
 test("your count and the button fit above the fold on a phone", async ({
