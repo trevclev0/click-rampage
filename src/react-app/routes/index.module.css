@@ -28,3 +28,22 @@
   align-self: stretch;
   padding-block: var(--space-4);
 }
+
+/* Phones: a smaller hero keeps your count and the button above the fold
+   at 390×664, an iPhone 13 in Safari (e2e/fold.spec.ts checks it). */
+@media (max-width: 30rem) {
+  .title {
+    font-size: var(--text-2xl);
+  }
+
+  .lead {
+    font-size: var(--text-base);
+    /* Avoids a lone last word when the lead wraps. */
+    text-wrap: pretty;
+  }
+
+  .game {
+    gap: var(--space-3);
+    padding-block: var(--space-3);
+  }
+}
