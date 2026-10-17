@@ -1,0 +1,314 @@
+import { MockWebSocket } from "@test-utils/mockWebSocket";
+import {
+  joinRoom,
+  makePlayer,
+  receive,
+  renderWithRoom,
+} from "@test-utils/roomTestUtils";
+import { act, fireEvent, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RenameDialog } from "./RenameDialog";
+
+const you = makePlayer({ name: "Rage" });
+
+const trigger = () => screen.getByRole("button", { name: "Change name" });
+const dialog = () =>
+  screen.getByRole("dialog", { hidden: true }) as HTMLDialogElement;
+const input = () => screen.getByLabelText("Name");
+const save = () => screen.getByRole("button", { name: /^(Save|Saving…)$/ });
+const renames = (socket: MockWebSocket) =>
+  socket.sent.filter((m) => (m as { type: string }).type === "rename");
+
+// Pasted rather than typed, so emoji arrive whole.
+async function enterName(user: ReturnType<typeof userEvent.setup>, v: string) {
+  await user.clear(input());
+  await user.paste(v);
+}
+
+async function openDialog() {
+  const user = userEvent.setup();
+  renderWithRoom(<RenameDialog />);
+  const socket = joinRoom(you);
+  await user.click(trigger());
+  return { user, socket };
+}
+
+describe("RenameDialog", () => {
+  it("shows your name and only opens once connected", () => {
+    renderWithRoom(<RenameDialog />);
+    expect(trigger()).toBeDisabled();
+
+    joinRoom(you);
+
+    expect(screen.getByText("Rage")).toBeInTheDocument();
+    expect(trigger()).toBeEnabled();
+  });
+
+  it("opens a modal prefilled with your name, Save disabled", async () => {
+    await openDialog();
+
+    expect(dialog()).toHaveAttribute("open");
+    expect(dialog()).toHaveAccessibleName("Change your name");
+    expect(input()).toHaveValue("Rage");
+    // Selected, so typing replaces the old name.
+    expect(input()).toHaveProperty("selectionStart", 0);
+    expect(input()).toHaveProperty("selectionEnd", 4);
+    expect(screen.getByText("4/20 characters")).toBeInTheDocument();
+    expect(save()).toBeDisabled();
+  });
+
+  it.each([
+    ["empty", "   "],
+    ["unchanged after trimming", "  Rage  "],
+  ])("keeps Save disabled when the name is %s", async (_, value) => {
+    const { user } = await openDialog();
+
+    await user.clear(input());
+    if (value) await user.type(input(), value);
+
+    expect(save()).toBeDisabled();
+  });
+
+  it("flags names over 20 characters inline", async () => {
+    const { user } = await openDialog();
+
+    await user.clear(input());
+    await user.type(input(), "x".repeat(21));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Use at most 20 characters.",
+    );
+    expect(input()).toHaveAttribute("aria-invalid", "true");
+    expect(save()).toBeDisabled();
+  });
+
+  it("counts a skin-toned emoji as one character", async () => {
+    const thumbs = "\u{1F44D}\u{1F3FD}"; // 👍🏽
+    const { user } = await openDialog();
+
+    await enterName(user, thumbs.repeat(20));
+    expect(screen.getByText("20/20 characters")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(save()).toBeEnabled();
+
+    await enterName(user, thumbs.repeat(21));
+    expect(screen.getByText("21/20 characters")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Use at most 20 characters.",
+    );
+    expect(save()).toBeDisabled();
+  });
+
+  it("measures whitespace runs collapsed, as the name is saved", async () => {
+    const { user, socket } = await openDialog();
+
+    await enterName(user, `Ab${" ".repeat(20)}Cd`);
+    expect(screen.getByText("5/20 characters")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(input()).toHaveAttribute("aria-invalid", "false");
+
+    await user.click(save());
+    expect(renames(socket)).toEqual([{ type: "rename", name: "Ab Cd" }]);
+  });
+
+  it("counts ZWJ emoji by part, since joiners are stripped", async () => {
+    const coder = "\u{1F469}\u200D\u{1F4BB}"; // 👩‍💻
+    const { user } = await openDialog();
+
+    await enterName(user, coder.repeat(11));
+
+    expect(screen.getByText("22/20 characters")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Use at most 20 characters.",
+    );
+    expect(input()).toHaveAttribute("aria-invalid", "true");
+    expect(save()).toBeDisabled();
+  });
+
+  it("flags a name too long for the wire despite fitting 20", async () => {
+    const { user } = await openDialog();
+
+    // 20 graphemes, each a letter plus 10 combining marks: 220 UTF-16 units.
+    await enterName(user, `e${"\u0301".repeat(10)}`.repeat(20));
+
+    expect(screen.getByText("20/20 characters")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That name is too long.",
+    );
+    expect(save()).toBeDisabled();
+  });
+
+  it("sends the trimmed name with Enter and closes once confirmed", async () => {
+    const { user, socket } = await openDialog();
+
+    await user.clear(input());
+    await user.type(input(), "  Click   Queen {Enter}");
+
+    expect(renames(socket)).toEqual([{ type: "rename", name: "Click Queen" }]);
+    expect(save()).toHaveTextContent("Saving…");
+    expect(dialog()).toHaveAttribute("open");
+
+    receive({ type: "renamed", id: you.id, name: "Click Queen" });
+
+    expect(dialog()).not.toHaveAttribute("open");
+    expect(screen.getByText("Click Queen")).toBeInTheDocument();
+  });
+
+  it("locks the field while a save is in flight", async () => {
+    const { user, socket } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Steady{Enter}");
+    expect(input()).toHaveAttribute("readonly");
+
+    // Typing now must not drop the pending save or allow a second one.
+    await user.type(input(), "!");
+    expect(input()).toHaveValue("Steady");
+    expect(save()).toHaveTextContent("Saving…");
+
+    receive({ type: "renamed", id: you.id, name: "Steady" });
+
+    expect(dialog()).not.toHaveAttribute("open");
+    expect(renames(socket)).toEqual([{ type: "rename", name: "Steady" }]);
+  });
+
+  it("shows a server rejection inline and keeps the dialog open", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Nope");
+    await user.click(save());
+
+    receive({
+      type: "error",
+      code: "invalid_name",
+      message: "Names must be 1-20 visible characters",
+    });
+
+    expect(dialog()).toHaveAttribute("open");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Names must be 1-20 visible characters",
+    );
+    expect(save()).toHaveTextContent("Save");
+
+    // Editing the name clears the old error.
+    await user.type(input(), "!");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("treats any other error after Save as a rejection", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Garbled");
+    await user.click(save());
+    expect(save()).toHaveTextContent("Saving…");
+
+    receive({
+      type: "error",
+      code: "invalid_message",
+      message: "Unreadable message",
+    });
+
+    expect(dialog()).toHaveAttribute("open");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That name couldn't be saved.",
+    );
+    expect(save()).toHaveTextContent("Save");
+    expect(save()).toBeEnabled();
+  });
+
+  it("ends the save on a rejection with no message", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Quiet");
+    await user.click(save());
+
+    receive({ type: "error", code: "invalid_name", message: "" });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That name couldn't be saved.",
+    );
+    expect(save()).toHaveTextContent("Save");
+    expect(save()).toBeEnabled();
+  });
+
+  it("moves focus back to the selected name on a rejection", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Nope");
+    await user.click(save());
+    expect(input()).not.toHaveFocus();
+
+    receive({ type: "error", code: "invalid_name", message: "Not that" });
+
+    expect(input()).toHaveFocus();
+    expect(input()).toHaveProperty("selectionStart", 0);
+    expect(input()).toHaveProperty("selectionEnd", 4);
+  });
+
+  it("ignores an error that arrived before you saved", async () => {
+    const { user } = await openDialog();
+    receive({
+      type: "error",
+      code: "invalid_name",
+      message: "an older rejection",
+    });
+
+    await user.clear(input());
+    await user.type(input(), "Fresh");
+    await user.click(save());
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(save()).toHaveTextContent("Saving…");
+  });
+
+  it("closes on Cancel without sending", async () => {
+    const { user, socket } = await openDialog();
+    await user.type(input(), "Other");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(dialog()).not.toHaveAttribute("open");
+    expect(renames(socket)).toEqual([]);
+  });
+
+  it("stops waiting when the connection drops", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Lost");
+    await user.click(save());
+    expect(save()).toHaveTextContent("Saving…");
+
+    act(() => MockWebSocket.latest().drop());
+
+    expect(save()).toHaveTextContent("Save");
+    expect(save()).toBeDisabled();
+    expect(trigger()).toBeDisabled();
+  });
+
+  describe("while reconnecting", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("says why Save is unavailable until the room is back", () => {
+      const note = "Reconnecting… you can save once you're back online.";
+      renderWithRoom(<RenameDialog />);
+      joinRoom(you);
+      fireEvent.click(trigger());
+      const status = screen.getByRole("status");
+      expect(status).toBeEmptyDOMElement();
+      expect(input()).toHaveAccessibleDescription("4/20 characters");
+
+      act(() => MockWebSocket.latest().drop());
+
+      expect(status).toHaveTextContent(note);
+      expect(input()).toHaveAccessibleDescription(`4/20 characters ${note}`);
+      expect(save()).toBeDisabled();
+
+      act(() => vi.advanceTimersByTime(1_000));
+      joinRoom(you);
+
+      expect(status).toBeEmptyDOMElement();
+      expect(input()).toHaveAccessibleDescription("4/20 characters");
+    });
+  });
+});

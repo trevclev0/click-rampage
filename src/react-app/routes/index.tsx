@@ -1,7 +1,8 @@
 import { ClickButton } from "@components/ClickButton";
+import { ConnectionCard } from "@components/ConnectionCard";
 import { HealthStatus } from "@components/HealthStatus";
 import { PlayerGrid } from "@components/PlayerGrid";
-import { RoomDebug } from "@components/RoomDebug";
+import { RenameDialog } from "@components/RenameDialog";
 import { YourCount } from "@components/YourCount";
 import { createFileRoute } from "@tanstack/react-router";
 import styles from "./index.module.css";
@@ -20,10 +21,11 @@ function HomePage() {
       <div className={styles.game}>
         <YourCount />
         <ClickButton />
+        <RenameDialog />
       </div>
       <PlayerGrid />
+      <ConnectionCard />
       <HealthStatus />
-      <RoomDebug />
     </section>
   );
 }
