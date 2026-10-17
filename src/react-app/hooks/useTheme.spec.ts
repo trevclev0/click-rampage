@@ -24,6 +24,33 @@ const stubSystemTheme = (initial: "light" | "dark") => {
   };
 };
 
+/**
+ * Stubs localStorage with writes that fail until `recover()`. `store` is
+ * the backing map, for simulating another tab's writes.
+ */
+const stubFlakyStorage = (saved: "light" | "dark" | null) => {
+  const store = new Map<string, string>();
+  if (saved) store.set(THEME_STORAGE_KEY, saved);
+  let failing = true;
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      if (failing) throw new Error("quota exceeded");
+      store.set(key, value);
+    },
+  });
+  return {
+    store,
+    recover: () => {
+      failing = false;
+    },
+  };
+};
+
+/** Simulates another tab changing the saved theme. */
+const notifyStorageChange = (key: string | null) =>
+  window.dispatchEvent(new StorageEvent("storage", { key }));
+
 afterEach(() => {
   // Runs before Vitest's own unstub, so restore the real storage first.
   vi.unstubAllGlobals();
@@ -116,5 +143,127 @@ describe("useTheme", () => {
 
     expect(setItem).toHaveBeenCalled();
     expect(result.current.theme).toBe("dark");
+  });
+
+  it("applies a toggle that fails to save over an older saved choice", () => {
+    stubSystemTheme("light");
+    vi.stubGlobal("localStorage", {
+      getItem: () => "dark",
+      setItem: () => {
+        throw new Error("quota exceeded");
+      },
+    });
+
+    const { result } = renderHook(() => useTheme());
+    expect(result.current.theme).toBe("dark");
+
+    act(() => result.current.toggleTheme());
+
+    expect(result.current.theme).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
+
+  it("saves and shows a toggle once storage recovers", () => {
+    stubSystemTheme("light");
+    const { store, recover } = stubFlakyStorage("dark");
+    const { result } = renderHook(() => useTheme());
+
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("light");
+    expect(store.get(THEME_STORAGE_KEY)).toBe("dark");
+
+    recover();
+    act(() => result.current.toggleTheme());
+
+    expect(store.get(THEME_STORAGE_KEY)).toBe("dark");
+    expect(result.current.theme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("lets another tab's newer save win over a failed toggle", () => {
+    stubSystemTheme("light");
+    const { store } = stubFlakyStorage(null);
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("dark");
+
+    act(() => {
+      store.set(THEME_STORAGE_KEY, "light");
+      notifyStorageChange(THEME_STORAGE_KEY);
+    });
+
+    expect(result.current.theme).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
+
+  it("doesn't revive a failed toggle when storage moves back", () => {
+    stubSystemTheme("light");
+    const { store } = stubFlakyStorage("dark");
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("light");
+
+    // Another tab saves light, then dark again: the value the failed
+    // toggle was made over. The newest save still wins.
+    for (const saved of ["light", "dark"] as const) {
+      act(() => {
+        store.set(THEME_STORAGE_KEY, saved);
+        notifyStorageChange(THEME_STORAGE_KEY);
+      });
+    }
+
+    expect(result.current.theme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("drops a failed toggle even when both saves land before the events", () => {
+    stubSystemTheme("light");
+    const { store } = stubFlakyStorage("dark");
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("light");
+
+    // Another tab saves light, then dark, before this tab handles either
+    // event, so every read already sees dark: only the events say so.
+    store.set(THEME_STORAGE_KEY, "light");
+    store.set(THEME_STORAGE_KEY, "dark");
+    act(() => {
+      notifyStorageChange(THEME_STORAGE_KEY);
+      notifyStorageChange(THEME_STORAGE_KEY);
+    });
+
+    expect(result.current.theme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("follows the OS when cleared elsewhere after a failed toggle", () => {
+    stubSystemTheme("light");
+    const { store } = stubFlakyStorage("light");
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("dark");
+
+    act(() => {
+      store.clear();
+      notifyStorageChange(null);
+    });
+
+    expect(result.current.theme).toBe("light");
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+  });
+
+  it("follows the OS again when the saved choice is cleared elsewhere", () => {
+    stubSystemTheme("light");
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.toggleTheme());
+    expect(result.current.theme).toBe("dark");
+
+    act(() => {
+      localStorage.removeItem(THEME_STORAGE_KEY);
+      window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    });
+
+    expect(result.current.theme).toBe("light");
+    expect(document.documentElement.dataset.theme).toBeUndefined();
   });
 });

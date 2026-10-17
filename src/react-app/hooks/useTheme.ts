@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 export type Theme = "light" | "dark";
 
@@ -35,12 +41,29 @@ function subscribe(onChange: () => void) {
 export function useTheme() {
   const stored = useSyncExternalStore(subscribe, readStoredTheme);
   const system = useSyncExternalStore(subscribe, systemTheme);
-  // Holds the choice when storage is blocked; setting it also re-renders
-  // this tab after a successful save (the storage event only fires in
-  // other tabs).
+  // A choice that couldn't be saved (storage blocked or full). It wins
+  // over the saved value until a save here succeeds or another tab saves
+  // or clears the theme.
   const [unsaved, setUnsaved] = useState<Theme | null>(null);
-  const choice = stored ?? unsaved;
+  // A successful save fires `storage` only in other tabs, so this tab
+  // re-renders itself to pick up the new value.
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  const choice = unsaved ?? stored;
   const theme = choice ?? system;
+
+  // Another tab saving or clearing the theme is a newer choice, so the
+  // event itself drops the unsaved one. Comparing values can't tell: two
+  // quick saves can end on the value this choice was made over.
+  useEffect(() => {
+    if (!unsaved) return;
+    const drop = (event: StorageEvent) => {
+      if (event.key === null || event.key === THEME_STORAGE_KEY) {
+        setUnsaved(null);
+      }
+    };
+    window.addEventListener("storage", drop);
+    return () => window.removeEventListener("storage", drop);
+  }, [unsaved]);
 
   // Only an explicit choice pins the theme; without one, the CSS media
   // query keeps following the OS.
@@ -57,10 +80,12 @@ export function useTheme() {
     const next: Theme = theme === "dark" ? "light" : "dark";
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next);
+      setUnsaved(null);
+      rerender();
     } catch {
-      // Storage blocked: the choice still applies for this visit.
+      // Storage blocked or full: the choice still applies for this visit.
+      setUnsaved(next);
     }
-    setUnsaved(next);
   }, [theme]);
 
   return { theme, toggleTheme };
