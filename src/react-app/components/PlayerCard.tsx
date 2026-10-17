@@ -23,7 +23,7 @@ export const PlayerCard = memo(function PlayerCard({
         className={`${styles.avatar} ${styles[`tone${avatarTone(player.id)}`]}`}
         aria-hidden="true"
       >
-        {initials(player.name)}
+        {initials(player)}
       </span>
       <div className={styles.identity}>
         <p className={styles.name}>{player.name}</p>

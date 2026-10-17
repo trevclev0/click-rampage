@@ -9,7 +9,11 @@ export interface RoomState {
   status: ConnectionStatus;
   /** Kept across disconnects so the UI can still show your name and count. */
   you: Player | null;
-  /** Online players, including you. Empty unless connected. */
+  /**
+   * Online players, including you, in join order: the welcome lists them
+   * that way and each `player_joined` goes on the end. Empty unless
+   * connected.
+   */
   online: Player[];
   /** Round-trip time of the last ping, in milliseconds. */
   latency: number | null;

@@ -2,15 +2,17 @@ import { useRoom } from "@hooks/useRoom";
 import { useId } from "react";
 import { PlayerCard } from "./PlayerCard";
 import styles from "./PlayerGrid.module.css";
+import { orderPlayers } from "./playerDisplay";
 
-/** Everyone in the room, you first, then in the order they joined. */
+/**
+ * Everyone in the room: you first, then by clicks (ties in join order).
+ * Cards are keyed by player id, so they move as counts change rather
+ * than remount.
+ */
 export function PlayerGrid() {
   const { you, online, status } = useRoom();
   const headingId = useId();
-  const players = [
-    ...online.filter((player) => player.id === you?.id),
-    ...online.filter((player) => player.id !== you?.id),
-  ];
+  const players = orderPlayers(online, you?.id);
 
   return (
     <section className={styles.section} aria-labelledby={headingId}>
