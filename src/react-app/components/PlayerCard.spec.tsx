@@ -21,6 +21,18 @@ describe("PlayerCard", () => {
     expect(screen.queryByText("You")).not.toBeInTheDocument();
   });
 
+  it("shows id initials for a default-named player", () => {
+    const id = "89c2".padEnd(32, "0");
+    render(
+      <PlayerCard
+        player={makePlayer({ id, name: "Player 89c2" })}
+        isYou={false}
+      />,
+    );
+
+    expect(screen.getByText("89")).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("marks your own card", () => {
     render(<PlayerCard player={player} isYou />);
     expect(screen.getByText("You")).toBeInTheDocument();

@@ -8,16 +8,38 @@ import {
 } from "./playerDisplay";
 
 describe("initials", () => {
+  const id = "89c2".padEnd(32, "0");
+
   it.each([
-    ["Player a1b2", "PA"],
     ["rage", "R"],
     ["  click   rampage  forever ", "CR"],
     ["🔥 blaze", "🔥B"],
     ["👍🏽 thumbs", "👍🏽T"],
     ["   ", "?"],
-  ])("%j → %j", (name, expected) => {
-    expect(initials(name)).toBe(expected);
+  ])("takes the first letters of a custom name: %j → %j", (name, expected) => {
+    expect(initials({ id, name })).toBe(expected);
   });
+
+  it("takes the start of the id for a default name", () => {
+    expect(initials({ id, name: "Player 89c2" })).toBe("89");
+    // Upper-cased like letter initials.
+    const hexId = "e4ab".padEnd(32, "0");
+    expect(initials({ id: hexId, name: "Player e4ab" })).toBe("E4");
+  });
+
+  it.each([
+    // Someone else's default name, typed in as a custom one.
+    ["Player e4ab", "PE"],
+    // Near misses of this player's own default name.
+    ["player 89c2", "P8"],
+    ["Player 89c", "P8"],
+    ["Player 89c2 jr", "P8"],
+  ])(
+    "keeps first letters for %j, which is not this id's default",
+    (name, expected) => {
+      expect(initials({ id, name })).toBe(expected);
+    },
+  );
 });
 
 describe("avatarTone", () => {

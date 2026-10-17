@@ -1,5 +1,7 @@
 /** Display helpers shared by the components that show players. */
 
+import { defaultPlayerName, type Player } from "@shared/player";
+
 const numberFormat = new Intl.NumberFormat();
 
 export const formatCount = (count: number) => numberFormat.format(count);
@@ -13,8 +15,13 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const firstGrapheme = (word: string) =>
   graphemes.segment(word)[Symbol.iterator]().next().value?.segment ?? "";
 
-/** Up to two initials: the first character of the first two words. */
-export function initials(name: string): string {
+/**
+ * Up to two initials for a player's avatar: the first character of the
+ * first two words of their name. Default names ("Player 89c2") would all
+ * start with "P", so those use the first two characters of the id instead.
+ */
+export function initials({ id, name }: Pick<Player, "id" | "name">): string {
+  if (name === defaultPlayerName(id)) return id.slice(0, 2).toLocaleUpperCase();
   const words = name.trim().split(/\s+/).filter(Boolean);
   const result = words.slice(0, 2).map(firstGrapheme).join("");
   return result ? result.toLocaleUpperCase() : "?";
