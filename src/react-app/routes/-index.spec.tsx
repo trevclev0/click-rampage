@@ -3,19 +3,31 @@ import {
   renderWithRouter,
 } from "@test-utils/reactRouterUtils";
 import { joinRoom, makePlayer } from "@test-utils/roomTestUtils";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 // Files prefixed with "-" are ignored by TanStack Router's file-based routing.
 describe("/ route", () => {
-  it("renders the home page with the API status", async () => {
+  it("renders the home page with the API status tucked away", async () => {
     renderWithRouter(createTestRouter("/"));
 
     expect(
       await screen.findByRole("heading", { name: "Get ready to rampage" }),
     ).toBeInTheDocument();
-    expect(await screen.findByText("test")).toBeInTheDocument();
+    // Collapsed, below the player grid.
+    const players = screen.getByRole("heading", { name: /online$/ });
+    const details = screen
+      .getByText("Connection details")
+      .closest("details") as HTMLElement;
+    expect(details).not.toHaveAttribute("open");
+    expect(players.compareDocumentPosition(details)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      within(details).getByRole("region", { name: "Connection" }),
+    ).toBeInTheDocument();
+    expect(await within(details).findByText("test")).toBeInTheDocument();
   });
 
   it("lets you click once the room connects", async () => {
@@ -44,6 +56,10 @@ describe("/ route", () => {
 
     expect(click).toBeDisabled();
     expect(rename).toBeDisabled();
-    expect(screen.getByText("Disconnected")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Connection" })).getByText(
+        "Disconnected",
+      ),
+    ).toBeInTheDocument();
   });
 });

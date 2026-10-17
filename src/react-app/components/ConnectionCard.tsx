@@ -1,16 +1,14 @@
-import type { ConnectionStatus } from "@hooks/roomReducer";
 import { useRoom } from "@hooks/useRoom";
 import { roomSocketUrl } from "@hooks/useRoomSocket";
 import { useId } from "react";
 import styles from "./ConnectionCard.module.css";
+import { statusLabels } from "./connectionStatus";
 
-const statusLabels: Record<ConnectionStatus, string> = {
-  connected: "Connected",
-  connecting: "Connecting…",
-  disconnected: "Disconnected",
-};
-
-/** Status, server and round-trip latency of the room connection. */
+/**
+ * Status, server and round-trip latency of the room connection. Status
+ * changes are announced by `ConnectionDetails`, not here, so a screen reader
+ * hears them once, whether or not the card is showing.
+ */
 export function ConnectionCard() {
   const { status, latency } = useRoom();
   const headingId = useId();
@@ -24,7 +22,7 @@ export function ConnectionCard() {
         <dt>Status</dt>
         <dd className={styles.status} data-status={status}>
           <span className={styles.dot} aria-hidden="true" />
-          <span aria-live="polite">{statusLabels[status]}</span>
+          <span>{statusLabels[status]}</span>
         </dd>
         <dt>Server</dt>
         <dd>
