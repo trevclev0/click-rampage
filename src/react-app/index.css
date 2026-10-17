@@ -15,8 +15,12 @@
   --color-border: #f1d9c4;
   --color-text: #1d1230;
   --color-muted: #6b5a7e;
-  --color-accent: #e8175d;
-  --color-accent-hover: #c80f4d;
+  /* Small white text sits on the accent, so keep it above 4.5:1: 5.03:1
+     with white, 4.77:1 against --color-bg. The hover shade stays a clear
+     step darker (1.31:1 against the accent) so hover and the button's lip
+     still read. */
+  --color-accent: #d91356;
+  --color-accent-hover: #b80c47;
   --color-accent-contrast: #ffffff;
   --color-highlight: #ffb400;
   --color-ok: #0f8a4b;
@@ -43,6 +47,19 @@
   --space-4: 1.5rem;
   --space-5: 2rem;
   --space-6: 3rem;
+
+  /* Avatar backgrounds, the same in both themes. White initials stay above
+     4.5:1 contrast on every one. */
+  --avatar-0: #c2185b;
+  --avatar-1: #7b1fa2;
+  --avatar-2: #3949ab;
+  --avatar-3: #0277bd;
+  --avatar-4: #00796b;
+  --avatar-5: #2e7d32;
+  --avatar-6: #b45309;
+  --avatar-7: #c62828;
+  --avatar-text: #ffffff;
+  --color-backdrop: rgb(19 13 34 / 0.6);
 
   --radius: 0.75rem;
   --radius-pill: 999px;
