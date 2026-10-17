@@ -1,9 +1,9 @@
+import { PING_INTERVAL_MS } from "@shared/protocol";
 import { MockWebSocket } from "@test-utils/mockWebSocket";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONNECT_TIMEOUT_MS,
-  PING_INTERVAL_MS,
   PONG_TIMEOUT_MS,
   retryDelay,
   roomSocketUrl,

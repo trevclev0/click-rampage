@@ -4,7 +4,11 @@ import {
   normalizePlayerName,
   type Player,
 } from "@shared/player";
-import { parseClientMessage, type ServerMessage } from "@shared/protocol";
+import {
+  PING_INTERVAL_MS,
+  parseClientMessage,
+  type ServerMessage,
+} from "@shared/protocol";
 import { sanitizeErrorText } from "@shared/sanitizeError";
 import { isValidPlayerId } from "@worker/middleware/player";
 import { PLAYER_ID_HEADER } from "./roomConstants";
@@ -26,11 +30,22 @@ export const FLUSH_INTERVAL_MS = 1000;
 export const MAX_FLUSH_RETRY_MS = 60_000;
 
 /**
+ * A socket with no ping for this long counts as gone. That is two missed
+ * pings plus slack, so a background tab whose timers the browser throttles
+ * to once a minute still counts as online.
+ */
+export const STALE_SOCKET_MS = 2 * PING_INTERVAL_MS + 10_000;
+
+/**
  * Per-socket state. Stored with serializeAttachment because instance fields
  * are lost when the Room hibernates.
  */
 type SocketAttachment = {
   playerId: string;
+  /** When (ms) the client last pinged, or connected if it hasn't yet. */
+  lastPing: number;
+  /** Set once a sweep has handled this socket as gone. */
+  swept?: true;
   /** Start (ms) of the current one-second rate-limit window. */
   windowStart: number;
   /** Increments accepted in the current window. */
@@ -101,6 +116,8 @@ export class Room extends DurableObject<Env> {
       return new Response("Missing player", { status: 400 });
     }
 
+    this.#closeStaleSockets();
+
     // A player is "joining" only when this is their first open socket;
     // another tab for an already-online player is silent.
     const alreadyOnline = this.#openSockets(playerId).length > 0;
@@ -111,6 +128,7 @@ export class Room extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server, [playerId]);
     server.serializeAttachment({
       playerId,
+      lastPing: Date.now(),
       windowStart: 0,
       windowCount: 0,
     } satisfies SocketAttachment);
@@ -125,6 +143,10 @@ export class Room extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+    // A socket the Room has closed can still deliver what its client sent
+    // before the close arrived. Replying would throw, and it's gone anyway.
+    if (ws.readyState !== WebSocket.OPEN) return;
+
     const message = parseClientMessage(raw);
     if (message === null) {
       send(ws, {
@@ -141,7 +163,12 @@ export class Room extends DurableObject<Env> {
 
     switch (message.type) {
       case "ping":
+        attachment.lastPing = Date.now();
+        ws.serializeAttachment(attachment);
         send(ws, { type: "pong", t: message.t });
+        // Every client pings, so this sweeps at least once per interval
+        // while anyone is connected, with no alarm needed.
+        this.#closeStaleSockets();
         return;
       case "increment": {
         if (!this.#allowIncrement(ws, attachment)) return;
@@ -193,7 +220,8 @@ export class Room extends DurableObject<Env> {
    * costs no extra failed write (or error line) per departure.
    */
   #handleDisconnect(ws: WebSocket) {
-    const { playerId } = ws.deserializeAttachment() as SocketAttachment;
+    const { playerId, swept } = ws.deserializeAttachment() as SocketAttachment;
+    if (swept) return;
     const stillOnline = this.#openSockets(playerId).some(
       (other) => other !== ws,
     );
@@ -207,6 +235,27 @@ export class Room extends DurableObject<Env> {
     // drops them then, once they are offline.
     if (player && !this.#dirty.has(player)) this.#players.delete(playerId);
     this.#broadcast({ type: "player_left", id: playerId }, ws);
+  }
+
+  /**
+   * Closes sockets that stopped pinging and handles each one as a
+   * disconnect. Some sockets never report a close: a half-open connection,
+   * a suspended phone tab, or an upgrade the browser abandoned mid-handshake
+   * (the Vite dev server then never closes the Room's end). A client that
+   * is still there answers the close and reconnects.
+   */
+  #closeStaleSockets() {
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws.readyState !== WebSocket.OPEN || !isStale(ws)) continue;
+      try {
+        ws.close(1001, "No ping");
+      } catch {
+        // Already closed.
+      }
+      this.#handleDisconnect(ws);
+      // Marked so the close a live client answers with isn't handled twice.
+      ws.serializeAttachment({ ...ws.deserializeAttachment(), swept: true });
+    }
   }
 
   /** Fixed one-second window per socket; returns false when over the cap. */
@@ -225,7 +274,7 @@ export class Room extends DurableObject<Env> {
   /**
    * Accepted sockets that are still OPEN. A closing socket can stay
    * registered briefly, so every presence decision uses this one definition
-   * of "online".
+   * of "online". A stale socket counts until #closeStaleSockets closes it.
    */
   #openSockets(playerId?: string): WebSocket[] {
     return this.ctx
@@ -392,6 +441,12 @@ export class Room extends DurableObject<Env> {
 
 function send(ws: WebSocket, message: ServerMessage) {
   ws.send(JSON.stringify(message));
+}
+
+/** Whether a socket has gone {@link STALE_SOCKET_MS} without a ping. */
+function isStale(ws: WebSocket): boolean {
+  const { lastPing } = ws.deserializeAttachment() as SocketAttachment;
+  return Date.now() - lastPing > STALE_SOCKET_MS;
 }
 
 /**

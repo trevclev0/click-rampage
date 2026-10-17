@@ -1,9 +1,12 @@
-import { type ClientMessage, parseServerMessage } from "@shared/protocol";
+import {
+  type ClientMessage,
+  PING_INTERVAL_MS,
+  parseServerMessage,
+} from "@shared/protocol";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { initialRoomState, roomReducer } from "./roomReducer";
 
 export const CONNECT_TIMEOUT_MS = 10_000;
-export const PING_INTERVAL_MS = 30_000;
 export const PONG_TIMEOUT_MS = 10_000;
 export const STABLE_CONNECTION_MS = 10_000;
 const BASE_RETRY_MS = 1_000;
