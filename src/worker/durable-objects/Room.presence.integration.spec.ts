@@ -7,7 +7,7 @@ import {
   type TestSocket,
 } from "@worker/test-utils/socket";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STALE_SOCKET_MS } from "./Room";
+import { PING_SWEEP_INTERVAL_MS, STALE_SOCKET_MS } from "./Room";
 
 // Each test uses its own Room instance (unique name), so its players are
 // the only ones online.
@@ -37,6 +37,12 @@ const ping = { type: "ping", t: 0 };
 
 const leaves = (messages: ServerMessage[]) =>
   messages.filter((m) => m.type === "player_left");
+
+/** The joins and leaves among `messages`, in order. */
+const presence = (messages: ServerMessage[]) =>
+  messages
+    .filter((m) => m.type === "player_joined" || m.type === "player_left")
+    .map((m) => m.type);
 
 // Only the clock is faked: the Room runs in the test's isolate, so moving
 // Date here ages every socket's last ping.
@@ -143,13 +149,69 @@ describe("Room presence", () => {
     await drain(watcher);
 
     // The watcher and the live tab keep pinging; the abandoned tab ages out.
-    vi.advanceTimersByTime(STALE_SOCKET_MS - 1000);
+    vi.advanceTimersByTime(STALE_SOCKET_MS - 5000);
     await drain(watcher);
-    vi.advanceTimersByTime(2000);
+    await drain(live);
+    vi.advanceTimersByTime(PING_SWEEP_INTERVAL_MS);
     await drain(live); // sweeps the abandoned socket
     // The player still has a live tab, so nobody is told they left.
     expect(leaves(await drain(watcher))).toEqual([]);
 
+    live.close();
+    expect(leaves(await untilLeft(watcher))).toEqual([
+      { type: "player_left", id: playerId },
+    ]);
+  });
+
+  it("sweeps on a ping at most once per interval", async () => {
+    const stub = room();
+    const ghost = await join(stub);
+    vi.advanceTimersByTime(STALE_SOCKET_MS - 5000);
+    const watcher = await join(stub); // sweeps; the ghost isn't stale yet
+    vi.advanceTimersByTime(6000);
+
+    // The ghost is stale now, but the last sweep was only 6 s ago. A ping
+    // sweeps after its pong, so the second round trip would show a leave.
+    const seen = [...(await drain(watcher)), ...(await drain(watcher))];
+    expect(leaves(seen)).toEqual([]);
+
+    vi.advanceTimersByTime(PING_SWEEP_INTERVAL_MS);
+    expect(leaves(await untilLeft(watcher))).toEqual([
+      { type: "player_left", id: ghost.id },
+    ]);
+  });
+
+  it("announces a player who rejoins over a stale socket of theirs", async () => {
+    const stub = room();
+    const playerId = newPlayerId();
+    await join(stub, playerId); // abandoned
+    vi.advanceTimersByTime(STALE_SOCKET_MS - 1000);
+    const watcher = await join(stub);
+    vi.advanceTimersByTime(2000);
+
+    const back = await join(stub, playerId);
+
+    expect(back.welcome.online.map((p) => p.id)).toContain(playerId);
+    // The stale socket leaves, then the player joins again, so watchers end
+    // up listing them.
+    const seen = [...(await drain(watcher)), ...(await drain(watcher))];
+    expect(presence(seen)).toEqual(["player_left", "player_joined"]);
+  });
+
+  it("announces the leave when a player's live tab closes beside a stale one", async () => {
+    const stub = room();
+    const playerId = newPlayerId();
+    await join(stub, playerId); // abandoned
+    vi.advanceTimersByTime(62_000);
+    const watcher = await join(stub);
+    const live = await join(stub, playerId);
+    vi.advanceTimersByTime(STALE_SOCKET_MS - 67_000);
+    await drain(live); // a sweep runs, but nothing is stale yet
+    await drain(watcher);
+    vi.advanceTimersByTime(6000);
+
+    // The abandoned tab is stale now and pings won't sweep for a while, so
+    // only the close itself can notice the player has gone.
     live.close();
     expect(leaves(await untilLeft(watcher))).toEqual([
       { type: "player_left", id: playerId },

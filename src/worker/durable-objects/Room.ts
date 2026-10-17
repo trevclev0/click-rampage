@@ -30,11 +30,14 @@ export const FLUSH_INTERVAL_MS = 1000;
 export const MAX_FLUSH_RETRY_MS = 60_000;
 
 /**
- * A socket with no ping for this long counts as gone. That is two missed
- * pings plus slack, so a background tab whose timers the browser throttles
- * to once a minute still counts as online.
+ * A socket with no ping for this long counts as gone. Chrome runs a long
+ * hidden tab's timers only once a minute, and as that starts one gap between
+ * pings can reach 90 s; this covers it with slack, so such a tab stays online.
  */
-export const STALE_SOCKET_MS = 2 * PING_INTERVAL_MS + 10_000;
+export const STALE_SOCKET_MS = 3 * PING_INTERVAL_MS + 30_000;
+
+/** Least time between the stale-socket sweeps that pings trigger. */
+export const PING_SWEEP_INTERVAL_MS = 10_000;
 
 /**
  * Per-socket state. Stored with serializeAttachment because instance fields
@@ -93,6 +96,8 @@ export class Room extends DurableObject<Env> {
   #flushTimer: ReturnType<typeof setTimeout> | undefined;
   /** Flushes failed in a row; sets the retry backoff. */
   #failures = 0;
+  /** When #closeStaleSockets last ran. Lost on hibernation, which is fine. */
+  #lastSweep = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -116,6 +121,8 @@ export class Room extends DurableObject<Env> {
       return new Response("Missing player", { status: 400 });
     }
 
+    // Before the presence check: a stale socket of this player's must not
+    // make their return look like another tab.
     this.#closeStaleSockets();
 
     // A player is "joining" only when this is their first open socket;
@@ -166,9 +173,12 @@ export class Room extends DurableObject<Env> {
         attachment.lastPing = Date.now();
         ws.serializeAttachment(attachment);
         send(ws, { type: "pong", t: message.t });
-        // Every client pings, so this sweeps at least once per interval
-        // while anyone is connected, with no alarm needed.
-        this.#closeStaleSockets();
+        // Every client pings, so this sweeps while anyone is connected, with
+        // no alarm needed. Throttled, so a busy Room doesn't scan every
+        // socket on every ping.
+        if (Date.now() - this.#lastSweep >= PING_SWEEP_INTERVAL_MS) {
+          this.#closeStaleSockets();
+        }
         return;
       case "increment": {
         if (!this.#allowIncrement(ws, attachment)) return;
@@ -198,6 +208,9 @@ export class Room extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket, code: number, reason: string) {
     this.#handleDisconnect(ws);
+    // A stale tab of the same player would otherwise keep them listed until
+    // the next sweep.
+    this.#closeStaleSockets();
     try {
       // Complete the closing handshake; a no-op if the runtime already did.
       ws.close(code, reason);
@@ -208,6 +221,7 @@ export class Room extends DurableObject<Env> {
 
   async webSocketError(ws: WebSocket) {
     this.#handleDisconnect(ws);
+    this.#closeStaleSockets();
   }
 
   /**
@@ -245,6 +259,7 @@ export class Room extends DurableObject<Env> {
    * is still there answers the close and reconnects.
    */
   #closeStaleSockets() {
+    this.#lastSweep = Date.now();
     for (const ws of this.ctx.getWebSockets()) {
       if (ws.readyState !== WebSocket.OPEN || !isStale(ws)) continue;
       try {
