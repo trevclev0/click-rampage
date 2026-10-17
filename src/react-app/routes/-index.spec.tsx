@@ -56,6 +56,10 @@ describe("/ route", () => {
 
     expect(click).toBeDisabled();
     expect(rename).toBeDisabled();
-    expect(screen.getByText("Disconnected")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Connection" })).getByText(
+        "Disconnected",
+      ),
+    ).toBeInTheDocument();
   });
 });

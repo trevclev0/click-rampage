@@ -26,6 +26,27 @@ test("connection details start collapsed and open from the keyboard", async ({
   await expect(card).toBeVisible();
 });
 
+test("connection changes are announced while collapsed", async ({ page }) => {
+  await page.goto("/");
+  const live = page.getByRole("switch", { name: "Live" });
+  // The Live switch only shows the connection visually, and closed details
+  // hide the card from screen readers, so a hidden status line speaks up.
+  const announcer = page
+    .getByRole("status")
+    .filter({ hasText: /^(Connecting…|Connected|Disconnected)$/ });
+
+  await expect(page.getByRole("region", { name: "Connection" })).toBeHidden();
+  await expect(announcer).toHaveText("Connected");
+  // In the accessibility tree, but not drawn.
+  expect((await announcer.boundingBox())?.width).toBeLessThanOrEqual(1);
+
+  await live.click();
+  await expect(announcer).toHaveText("Disconnected");
+
+  await live.click();
+  await expect(announcer).toHaveText("Connected");
+});
+
 test("going offline and back keeps your count", async ({ page }) => {
   await page.goto("/");
   const click = page.getByRole("button", { name: "Click!" });
