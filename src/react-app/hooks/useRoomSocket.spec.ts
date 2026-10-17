@@ -1,6 +1,7 @@
 import { PING_INTERVAL_MS } from "@shared/protocol";
 import { MockWebSocket } from "@test-utils/mockWebSocket";
 import { act, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONNECT_TIMEOUT_MS,
@@ -233,6 +234,37 @@ describe("useRoomSocket", () => {
 
     expect(result.current.send({ type: "increment" })).toBe(true);
     expect(MockWebSocket.latest().sent.at(-1)).toEqual({ type: "increment" });
+  });
+
+  // A socket closed mid-handshake leaks a ghost player under the dev server.
+  it("opens one socket under StrictMode's double mount", () => {
+    const { result } = renderHook(() => useRoomSocket(), {
+      wrapper: StrictMode,
+    });
+    act(() => vi.advanceTimersByTime(0));
+
+    expect(MockWebSocket.instances).toHaveLength(1);
+    const socket = MockWebSocket.latest();
+    expect(socket.readyState).toBe(MockWebSocket.CONNECTING);
+
+    act(() => {
+      socket.open();
+      socket.receive({ type: "welcome", you, online: [you] });
+    });
+    expect(result.current.status).toBe("connected");
+    expect(socket.sent).toEqual([{ type: "ping", t: 1_000 }]);
+  });
+
+  it("closes a socket that unmounts mid-handshake", () => {
+    const { unmount } = renderHook(() => useRoomSocket());
+    const socket = MockWebSocket.latest();
+
+    unmount();
+    act(() => vi.advanceTimersByTime(0));
+
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(MockWebSocket.instances).toHaveLength(1);
   });
 
   it("closes the socket on unmount", () => {
