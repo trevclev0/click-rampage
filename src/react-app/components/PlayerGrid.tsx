@@ -5,7 +5,7 @@ import styles from "./PlayerGrid.module.css";
 
 /** Everyone in the room, you first, then in the order they joined. */
 export function PlayerGrid() {
-  const { you, online } = useRoom();
+  const { you, online, status } = useRoom();
   const headingId = useId();
   const players = [
     ...online.filter((player) => player.id === you?.id),
@@ -18,7 +18,11 @@ export function PlayerGrid() {
         {players.length} {players.length === 1 ? "player" : "players"} online
       </h2>
       {players.length === 0 ? (
-        <p className={styles.empty}>Waiting for the room…</p>
+        <p className={styles.empty}>
+          {status === "disconnected"
+            ? "You're offline. Switch Live back on to rejoin."
+            : "Waiting for the room…"}
+        </p>
       ) : (
         <ul className={styles.grid}>
           {players.map((player) => (

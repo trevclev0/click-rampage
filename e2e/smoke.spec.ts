@@ -18,12 +18,12 @@ test.describe("@smoke", () => {
   test("home page joins the room over a WebSocket", async ({ page }) => {
     await page.goto("/");
 
-    // Exact match on the status cell, so "connecting" or "disconnected"
-    // never count.
+    // Exact match on the status, so "Connecting…" or "Disconnected" never
+    // count.
     await expect(
       page
-        .getByLabel("Room connection")
-        .getByText("connected", { exact: true }),
+        .getByRole("region", { name: "Connection" })
+        .getByText("Connected", { exact: true }),
     ).toBeVisible();
   });
 
