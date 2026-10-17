@@ -31,6 +31,12 @@ export const MAX_FLUSH_RETRY_MS = 60_000;
  */
 type SocketAttachment = {
   playerId: string;
+  /**
+   * When the player came online, as a Room-wide sequence number. Every
+   * tab of a player carries the same one, so `welcome.online` lists
+   * players in the order clients saw `player_joined`.
+   */
+  joinSeq: number;
   /** Start (ms) of the current one-second rate-limit window. */
   windowStart: number;
   /** Increments accepted in the current window. */
@@ -102,8 +108,13 @@ export class Room extends DurableObject<Env> {
     }
 
     // A player is "joining" only when this is their first open socket;
-    // another tab for an already-online player is silent.
-    const alreadyOnline = this.#openSockets(playerId).length > 0;
+    // another tab for an already-online player is silent and keeps their
+    // place in join order.
+    const [tab] = this.#openSockets(playerId);
+    const alreadyOnline = tab !== undefined;
+    const joinSeq = alreadyOnline
+      ? (tab.deserializeAttachment() as SocketAttachment).joinSeq
+      : this.#nextJoinSeq();
 
     const { 0: client, 1: server } = new WebSocketPair();
     // acceptWebSocket (not server.accept()) opts into hibernation: idle
@@ -111,6 +122,7 @@ export class Room extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server, [playerId]);
     server.serializeAttachment({
       playerId,
+      joinSeq,
       windowStart: 0,
       windowCount: 0,
     } satisfies SocketAttachment);
@@ -356,14 +368,34 @@ export class Room extends DurableObject<Env> {
     this.#flushTimer = undefined;
   }
 
-  /** Players with at least one open socket (several tabs = one player). */
+  /**
+   * Players with at least one open socket (several tabs = one player), in
+   * the order they came online. Sorted explicitly: `getWebSockets()`
+   * returns sockets in no documented order (newest first, in practice).
+   */
   #onlinePlayers(): Player[] {
-    const ids = new Set(
-      this.#openSockets().map(
-        (ws) => (ws.deserializeAttachment() as SocketAttachment).playerId,
-      ),
-    );
-    return [...ids].map((id) => this.getOrCreatePlayer(id));
+    const joined = new Map<string, number>();
+    for (const ws of this.#openSockets()) {
+      const { playerId, joinSeq } =
+        ws.deserializeAttachment() as SocketAttachment;
+      joined.set(playerId, Math.min(joinSeq, joined.get(playerId) ?? joinSeq));
+    }
+    return [...joined]
+      .sort(([, a], [, b]) => a - b)
+      .map(([id]) => this.getOrCreatePlayer(id));
+  }
+
+  /**
+   * One past the highest join number any socket holds. Read from the
+   * attachments rather than kept in a field, which hibernation would reset.
+   */
+  #nextJoinSeq(): number {
+    let next = 0;
+    for (const ws of this.ctx.getWebSockets()) {
+      const { joinSeq } = ws.deserializeAttachment() as SocketAttachment;
+      next = Math.max(next, joinSeq + 1);
+    }
+    return next;
   }
 
   /**

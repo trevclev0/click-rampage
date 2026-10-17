@@ -29,8 +29,9 @@ export function initials({ id, name }: Pick<Player, "id" | "name">): string {
 
 /**
  * The grid's order: you first, then the most clicks. The sort is stable,
- * so ties keep their order in `players`, which is join order. Returns a
- * new array of the same player objects, leaving `players` as it was.
+ * so ties keep their order in `players`, which is join order (see
+ * `RoomState.online`). Returns a new array of the same player objects,
+ * leaving `players` as it was.
  */
 export const orderPlayers = (
   players: readonly Player[],

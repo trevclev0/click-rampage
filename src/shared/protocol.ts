@@ -38,6 +38,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("welcome"),
     you: playerSchema,
+    /** Everyone online, you included, in the order they joined. */
     online: z.array(playerSchema),
   }),
   z.object({ type: z.literal("player_joined"), player: playerSchema }),
