@@ -49,3 +49,26 @@ test("two players see each other's clicks, renames and leaving", async ({
 
   await bob.context.close();
 });
+
+// Issue #33: under `bun run dev`, a reload used to leave the player online
+// for good after they left.
+test("a player who reloads and then leaves goes offline", async ({
+  browser,
+}) => {
+  const watcher = await join(browser);
+  const alice = await join(browser);
+  const aliceName = uniqueName("Alice");
+  await rename(alice.page, aliceName);
+  await expect(card(watcher.page, aliceName)).toBeVisible();
+
+  await alice.page.reload();
+  await expect(alice.page.getByText(`Playing as ${aliceName}`)).toBeVisible();
+  await expect(
+    alice.page.getByRole("button", { name: "Click!" }),
+  ).toBeEnabled();
+
+  await alice.context.close();
+  await expect(card(watcher.page, aliceName)).toHaveCount(0);
+
+  await watcher.context.close();
+});

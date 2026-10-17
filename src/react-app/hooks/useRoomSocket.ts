@@ -24,6 +24,15 @@ export function useRoomSocket() {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
   const [enabled, setEnabled] = useState(true);
   const socketRef = useRef<WebSocket | null>(null);
+  /**
+   * A socket torn down mid-handshake, kept for one tick so the effect's next
+   * run can adopt it instead of opening another. React StrictMode (dev
+   * only) reruns every effect's cleanup and setup once on mount, and closing
+   * a socket mid-handshake makes the dev server's WebSocket proxy
+   * (@cloudflare/vite-plugin) leak the Worker end: the Room keeps it open,
+   * so the player never goes offline.
+   */
+  const parkedRef = useRef<WebSocket | null>(null);
 
   const send = useCallback((message: ClientMessage) => {
     const socket = socketRef.current;
@@ -45,9 +54,19 @@ export function useRoomSocket() {
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let closeCurrent: (() => void) | undefined;
 
-    const open = () => {
+    // Closes the socket a tick later unless the next run adopted it.
+    const park = (socket: WebSocket) => {
+      parkedRef.current = socket;
+      setTimeout(() => {
+        if (parkedRef.current !== socket) return;
+        parkedRef.current = null;
+        socket.close();
+      }, 0);
+    };
+
+    const open = (adopted?: WebSocket) => {
       dispatch({ type: "status", status: "connecting" });
-      const socket = new WebSocket(roomSocketUrl(window.location));
+      const socket = adopted ?? new WebSocket(roomSocketUrl(window.location));
       socketRef.current = socket;
 
       let closed = false;
@@ -70,6 +89,10 @@ export function useRoomSocket() {
         socket.onmessage = null;
         socket.onclose = null;
         if (socketRef.current === socket) socketRef.current = null;
+        if (stopped && socket.readyState === WebSocket.CONNECTING) {
+          park(socket);
+          return;
+        }
         socket.close();
         if (stopped) return;
         dispatch({ type: "status", status: "connecting" });
@@ -110,7 +133,10 @@ export function useRoomSocket() {
       socket.onclose = handleClose;
     };
 
-    open();
+    // Adopt a socket that the previous run parked mid-handshake, if any.
+    const parked = parkedRef.current;
+    parkedRef.current = null;
+    open(parked ?? undefined);
 
     return () => {
       stopped = true;
