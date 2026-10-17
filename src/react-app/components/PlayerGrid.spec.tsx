@@ -19,6 +19,10 @@ const heading = () => screen.getByRole("heading", { level: 2 });
 const cards = () => screen.getAllByRole("listitem");
 const card = (name: string) =>
   cards().find((item) => within(item).queryByText(name)) as HTMLElement;
+const expectOrder = (...names: string[]) =>
+  expect(cards().map((item) => item.textContent)).toEqual(
+    names.map((name) => expect.stringContaining(name)),
+  );
 
 describe("PlayerGrid", () => {
   it("waits for the room before listing anyone", () => {
@@ -28,18 +32,35 @@ describe("PlayerGrid", () => {
     expect(screen.getByText("Waiting for the room…")).toBeInTheDocument();
   });
 
-  it("lists everyone online with you first", () => {
+  it("lists you first, then everyone else by clicks", () => {
     renderWithRoom(<PlayerGrid />);
     joinRoom(you, [ana, you, bo]);
 
     expect(heading()).toHaveTextContent("3 players online");
-    expect(cards().map((item) => item.textContent)).toEqual([
-      expect.stringContaining("Me"),
-      expect.stringContaining("Ana"),
-      expect.stringContaining("Bo"),
-    ]);
+    // Bo has more clicks than you, but you still come first.
+    expectOrder("Me", "Bo", "Ana");
     expect(within(card("Me")).getByText("You")).toBeInTheDocument();
     expect(within(card("Ana")).queryByText("You")).not.toBeInTheDocument();
+  });
+
+  it("reorders live as counts change, moving the same cards", () => {
+    renderWithRoom(<PlayerGrid />);
+    joinRoom(you, [ana, you, bo]);
+    const anaCard = card("Ana");
+    const boCard = card("Bo");
+
+    receive({ type: "count", id: ana.id, count: 10 });
+    expectOrder("Me", "Ana", "Bo");
+    // Keyed by id, so the cards moved rather than swapped contents.
+    expect(card("Ana")).toBe(anaCard);
+    expect(card("Bo")).toBe(boCard);
+
+    // A tie keeps join order: Ana joined before Bo.
+    receive({ type: "count", id: bo.id, count: 10 });
+    expectOrder("Me", "Ana", "Bo");
+
+    receive({ type: "count", id: bo.id, count: 11 });
+    expectOrder("Me", "Bo", "Ana");
   });
 
   it("follows joins, leaves, counts and renames live", () => {

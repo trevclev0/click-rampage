@@ -27,6 +27,20 @@ export function initials({ id, name }: Pick<Player, "id" | "name">): string {
   return result ? result.toLocaleUpperCase() : "?";
 }
 
+/**
+ * The grid's order: you first, then the most clicks. The sort is stable,
+ * so ties keep their order in `players`, which is join order. Returns a
+ * new array of the same player objects, leaving `players` as it was.
+ */
+export const orderPlayers = (
+  players: readonly Player[],
+  youId: string | undefined,
+): Player[] =>
+  players.toSorted(
+    (a, b) =>
+      Number(b.id === youId) - Number(a.id === youId) || b.count - a.count,
+  );
+
 export const AVATAR_TONES = 8;
 
 /**
