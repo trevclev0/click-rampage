@@ -24,3 +24,11 @@
   padding: 0;
   list-style: none;
 }
+
+/* Grid items default to min-width: auto, so one long name would set the
+   track to its full width and push the page wider than a phone screen.
+   Letting them shrink keeps the page within the viewport and lets the name
+   ellipsis work. */
+.grid > li {
+  min-width: 0;
+}
