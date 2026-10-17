@@ -11,8 +11,12 @@ describe("AppShell", () => {
 
     const brand = await screen.findByRole("link", { name: "Click Rampage" });
     expect(brand).toHaveAttribute("href", "/");
-    expect(screen.getByRole("banner")).toContainElement(
+    const header = screen.getByRole("banner");
+    expect(header).toContainElement(
       screen.getByRole("button", { name: /Switch to (dark|light) theme/ }),
+    );
+    expect(header).toContainElement(
+      screen.getByRole("switch", { name: "Live" }),
     );
     expect(screen.getByRole("main")).toContainElement(
       screen.getByRole("heading", { name: "Get ready to rampage" }),

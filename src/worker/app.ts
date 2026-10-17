@@ -2,7 +2,6 @@ import {
   conditionalLogger,
   requestIdMiddleware,
 } from "@worker/middleware/logger";
-import { playerMiddleware } from "@worker/middleware/player";
 import { healthRouter } from "@worker/routes/health";
 import { meRouter } from "@worker/routes/me";
 import { wsRouter } from "@worker/routes/ws";
@@ -23,9 +22,9 @@ app.onError((err, c) => {
 app.notFound((c) => c.json({ status: "error", code: "NOT_FOUND" }, 404));
 
 // Static assets are served before the worker runs; only /api/* reaches Hono
-// (see "run_worker_first" in wrangler.jsonc).
+// (see "run_worker_first" in wrangler.jsonc). Routes that need the player
+// apply playerMiddleware themselves, so e.g. /health never mints a cookie.
 const api = new Hono<AppEnv>()
-  .use("*", playerMiddleware)
   .route("/health", healthRouter)
   .route("/me", meRouter)
   .route("/ws", wsRouter);

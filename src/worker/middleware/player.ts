@@ -1,4 +1,3 @@
-import type { AppEnv } from "@worker/types";
 import { getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 
@@ -38,11 +37,25 @@ export async function derivePlayerId(token: string): Promise<string> {
 }
 
 /**
+ * Context added by playerMiddleware. Routes that read identity apply the
+ * middleware themselves, so only they get `playerId` in their context type.
+ */
+export type PlayerEnv = {
+  Variables: {
+    /** Server-issued anonymous player id, derived from the cookie token. */
+    playerId: string;
+  };
+};
+
+/**
  * Identifies the player from an HttpOnly cookie, minting a token on first
  * visit. The server is the only source of player identity — never trust an
  * id sent in a request body or header.
+ *
+ * Apply it only to routes that need identity: a first visit fires several
+ * requests at once, and each one that mints sets a different cookie.
  */
-export const playerMiddleware = createMiddleware<AppEnv>(async (c, next) => {
+export const playerMiddleware = createMiddleware<PlayerEnv>(async (c, next) => {
   const existing = getCookie(c, PLAYER_COOKIE);
   if (isValidPlayerToken(existing)) {
     c.set("playerId", await derivePlayerId(existing));

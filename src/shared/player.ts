@@ -20,14 +20,19 @@ const UNSAFE_CHARS = /[\p{Cc}\p{Cf}]/gu;
 // Counts what a person sees as one character (👍🏽 is two code points but
 // one grapheme), so the length limit matches the visible name.
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-const visibleLength = (text: string) => [...graphemes.segment(text)].length;
+export const visibleLength = (text: string) =>
+  [...graphemes.segment(text)].length;
+
+/** Strips unsafe characters, collapses whitespace runs and trims. */
+export const cleanPlayerName = (input: string) =>
+  input.replace(UNSAFE_CHARS, "").replace(/\s+/g, " ").trim();
 
 /**
  * Cleans a requested display name. Returns `null` when nothing usable is
  * left or the result is longer than {@link MAX_NAME_LENGTH}.
  */
 export function normalizePlayerName(input: string): string | null {
-  const name = input.replace(UNSAFE_CHARS, "").replace(/\s+/g, " ").trim();
+  const name = cleanPlayerName(input);
   if (name.length === 0 || visibleLength(name) > MAX_NAME_LENGTH) return null;
   return name;
 }

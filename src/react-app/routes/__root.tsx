@@ -1,4 +1,5 @@
 import { AppShell } from "@components/AppShell";
+import { RoomProvider } from "@components/RoomProvider";
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 
@@ -12,8 +13,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function RootComponent() {
   return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
+    <RoomProvider>
+      <AppShell>
+        <Outlet />
+      </AppShell>
+    </RoomProvider>
   );
 }
