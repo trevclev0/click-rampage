@@ -25,6 +25,14 @@ describe("GET /api/health", () => {
     });
   });
 
+  it("stays anonymous: no player cookie is minted", async () => {
+    const response = await request("/api/health", {});
+
+    // A first visit fires /health and /ws together; if both minted, the
+    // browser could keep a different player than the socket plays as.
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
   it("reuses an incoming x-request-id", async () => {
     const response = await request(
       "/api/health",

@@ -18,6 +18,12 @@ describe("GET /api/health", () => {
     expect(Number.isNaN(Date.parse(body.timestamp))).toBe(false);
   });
 
+  it("sets no player cookie", async () => {
+    const response = await request("/api/health");
+
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
   it("echoes a request id header", async () => {
     const response = await request("/api/health");
 
@@ -34,5 +40,25 @@ describe("unknown /api routes", () => {
       status: "error",
       code: "NOT_FOUND",
     });
+  });
+
+  it("set no player cookie, even next to /me and /ws", async () => {
+    const misses: [string, string][] = [
+      ["GET", "/api/does-not-exist"],
+      ["GET", "/api/me/nope"],
+      ["POST", "/api/me"],
+      ["GET", "/api/ws/nope"],
+    ];
+    for (const [method, path] of misses) {
+      const response = await exports.default.fetch(
+        new Request(`http://localhost${path}`, { method }),
+      );
+
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(
+        response.headers.get("set-cookie"),
+        `${method} ${path}`,
+      ).toBeNull();
+    }
   });
 });
