@@ -1,6 +1,6 @@
 import type { ServerMessage } from "@shared/protocol";
 import { derivePlayerId } from "@worker/middleware/player";
-import { connect } from "@worker/test-utils/socket";
+import { connect, drain } from "@worker/test-utils/socket";
 import { describe, expect, it } from "vitest";
 import { MAX_INCREMENTS_PER_SECOND } from "./Room";
 
@@ -16,22 +16,6 @@ async function join(player: { cookie: string }) {
   const welcome = await socket.next();
   if (welcome.type !== "welcome") throw new Error("expected welcome");
   return { ...socket, welcome };
-}
-
-/**
- * Reads messages until the pong for a fresh ping. Messages are delivered in
- * order, so everything returned arrived before the pong — this lets tests
- * assert that something was NOT sent.
- */
-async function drain(socket: Awaited<ReturnType<typeof join>>) {
-  const t = Math.random();
-  socket.send({ type: "ping", t });
-  const seen: ServerMessage[] = [];
-  for (;;) {
-    const message = await socket.next();
-    if (message.type === "pong" && message.t === t) return seen;
-    seen.push(message);
-  }
 }
 
 describe("Room game loop", () => {
