@@ -8,15 +8,25 @@ import {
 } from "./playerDisplay";
 
 describe("initials", () => {
+  const id = "89c2".padEnd(32, "0");
+
   it.each([
-    ["Player a1b2", "PA"],
     ["rage", "R"],
     ["  click   rampage  forever ", "CR"],
     ["🔥 blaze", "🔥B"],
     ["👍🏽 thumbs", "👍🏽T"],
     ["   ", "?"],
+    // Looks like a default name, but not this player's, so it was chosen.
+    ["Player a1b2", "PA"],
   ])("%j → %j", (name, expected) => {
-    expect(initials(name)).toBe(expected);
+    expect(initials({ id, name })).toBe(expected);
+  });
+
+  it("uses the id for a default name, so players don't all show P", () => {
+    expect(initials({ id, name: "Player 89c2" })).toBe("89");
+    expect(initials({ id: "e4".padEnd(32, "0"), name: "Player e400" })).toBe(
+      "E4",
+    );
   });
 });
 

@@ -17,6 +17,8 @@ const bo = makePlayer({ id: "c".repeat(32), name: "Bo", count: 9 });
 
 const heading = () => screen.getByRole("heading", { level: 2 });
 const cards = () => screen.getAllByRole("listitem");
+// Each card's name is the first paragraph inside it.
+const names = () => cards().map((item) => item.querySelector("p")?.textContent);
 const card = (name: string) =>
   cards().find((item) => within(item).queryByText(name)) as HTMLElement;
 
@@ -28,18 +30,41 @@ describe("PlayerGrid", () => {
     expect(screen.getByText("Waiting for the room…")).toBeInTheDocument();
   });
 
-  it("lists everyone online with you first", () => {
+  it("lists everyone online with you first, then the highest counts", () => {
     renderWithRoom(<PlayerGrid />);
     joinRoom(you, [ana, you, bo]);
 
     expect(heading()).toHaveTextContent("3 players online");
-    expect(cards().map((item) => item.textContent)).toEqual([
-      expect.stringContaining("Me"),
-      expect.stringContaining("Ana"),
-      expect.stringContaining("Bo"),
-    ]);
+    expect(names()).toEqual(["Me", "Bo", "Ana"]);
     expect(within(card("Me")).getByText("You")).toBeInTheDocument();
     expect(within(card("Ana")).queryByText("You")).not.toBeInTheDocument();
+  });
+
+  it("keeps you first even with the lowest count", () => {
+    renderWithRoom(<PlayerGrid />);
+    const behind = { ...you, count: 0 };
+    joinRoom(behind, [ana, behind, bo]);
+
+    expect(names()).toEqual(["Me", "Bo", "Ana"]);
+  });
+
+  it("keeps tied players in the order they joined", () => {
+    renderWithRoom(<PlayerGrid />);
+    const cy = makePlayer({ id: "d".repeat(32), name: "Cy", count: 2 });
+    joinRoom(you, [you, cy, ana]);
+    expect(names()).toEqual(["Me", "Cy", "Ana"]);
+
+    receive({ type: "player_joined", player: { ...bo, count: 2 } });
+    expect(names()).toEqual(["Me", "Cy", "Ana", "Bo"]);
+  });
+
+  it("reorders as counts change", () => {
+    renderWithRoom(<PlayerGrid />);
+    joinRoom(you, [you, bo, ana]);
+    expect(names()).toEqual(["Me", "Bo", "Ana"]);
+
+    receive({ type: "count", id: ana.id, count: 10 });
+    expect(names()).toEqual(["Me", "Ana", "Bo"]);
   });
 
   it("follows joins, leaves, counts and renames live", () => {

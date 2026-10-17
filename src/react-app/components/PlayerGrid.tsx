@@ -3,13 +3,18 @@ import { useId } from "react";
 import { PlayerCard } from "./PlayerCard";
 import styles from "./PlayerGrid.module.css";
 
-/** Everyone in the room, you first, then in the order they joined. */
+/**
+ * Everyone in the room: you first, then the highest counts. The sort is
+ * stable, so tied players stay in the order they joined.
+ */
 export function PlayerGrid() {
   const { you, online, status } = useRoom();
   const headingId = useId();
   const players = [
     ...online.filter((player) => player.id === you?.id),
-    ...online.filter((player) => player.id !== you?.id),
+    ...online
+      .filter((player) => player.id !== you?.id)
+      .sort((a, b) => b.count - a.count),
   ];
 
   return (

@@ -28,3 +28,19 @@
   align-self: stretch;
   padding-block: var(--space-4);
 }
+
+/* On phones the hero tightens so your count and the whole button fit on
+   the first screen without scrolling. */
+@media (max-width: 30rem) {
+  .title {
+    font-size: var(--text-2xl);
+  }
+
+  .lead {
+    font-size: var(--text-base);
+  }
+
+  .game {
+    padding-block: var(--space-2);
+  }
+}
