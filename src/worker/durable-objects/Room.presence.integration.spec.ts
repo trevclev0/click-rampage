@@ -116,14 +116,39 @@ describe("Room presence", () => {
     await drain(watcher);
     vi.advanceTimersByTime(STALE_SOCKET_MS + 1);
 
-    // One turn of the Room, so the ghost's late ping lands after the sweep
+    // One turn of the Room, so the ghost's late click lands after the sweep
     // and before its client could answer the close.
     await runInDurableObject(stub, async (instance, state) => {
       const [watcherWs] = state.getWebSockets(watcher.id);
       const [ghostWs] = state.getWebSockets(ghost.id);
       await instance.webSocketMessage(watcherWs, JSON.stringify(ping));
       expect(ghostWs.readyState).not.toBe(WebSocket.OPEN);
-      await instance.webSocketMessage(ghostWs, JSON.stringify(ping));
+      await instance.webSocketMessage(
+        ghostWs,
+        JSON.stringify({ type: "increment" }),
+      );
+    });
+
+    // The ghost already left, so its click neither counts nor broadcasts.
+    const seen = await drain(watcher);
+    expect(seen.filter((m) => m.type === "count")).toEqual([]);
+    expect(await stub.getOrCreatePlayer(ghost.id)).toMatchObject({ count: 0 });
+  });
+
+  it("applies what a client sent right before closing", async () => {
+    const stub = room();
+    const watcher = await join(stub);
+    const leaver = await join(stub);
+    await drain(watcher);
+
+    leaver.send({ type: "rename", name: "Last word" });
+    leaver.close();
+
+    const seen = await untilLeft(watcher);
+    expect(seen).toContainEqual({
+      type: "renamed",
+      id: leaver.id,
+      name: "Last word",
     });
   });
 

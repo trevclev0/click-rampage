@@ -162,9 +162,12 @@ export class Room extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
-    // A socket the Room has closed can still deliver what its client sent
-    // before the close arrived. Replying would throw, and it's gone anyway.
-    if (ws.readyState !== WebSocket.OPEN) return;
+    // Identity comes only from the socket, never from the message body.
+    const attachment = ws.deserializeAttachment() as SocketAttachment;
+    // A swept socket's client can still deliver what it sent before the
+    // Room's close reached it; that socket is already handled as gone. A
+    // client closing on its own is different: its last message still counts.
+    if (attachment.swept) return;
 
     const message = parseClientMessage(raw);
     if (message === null) {
@@ -176,8 +179,6 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
-    // Identity comes only from the socket, never from the message body.
-    const attachment = ws.deserializeAttachment() as SocketAttachment;
     const { playerId } = attachment;
 
     switch (message.type) {
@@ -487,6 +488,8 @@ export class Room extends DurableObject<Env> {
 }
 
 function send(ws: WebSocket, message: ServerMessage) {
+  // A socket that's closing can't take a reply, and sending would throw.
+  if (ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify(message));
 }
 
