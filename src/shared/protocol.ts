@@ -15,6 +15,12 @@ export const MAX_MESSAGE_BYTES = 1024;
  */
 export const MAX_RENAME_UNITS = 200;
 
+/**
+ * How often a client pings the Room. The Room treats a socket that stops
+ * pinging as gone, so both sides share this.
+ */
+export const PING_INTERVAL_MS = 30_000;
+
 const encoder = new TextEncoder();
 
 const playerSchema = z.object({
