@@ -1,5 +1,7 @@
 .button {
-  width: min(100%, 18rem);
+  /* Short screens (an iPhone SE, a phone on its side) size the button by
+     height too, keeping it above the fold (e2e/fold.spec.ts). */
+  width: min(100%, 18rem, 40svh);
   aspect-ratio: 1;
   border: none;
   border-radius: 50%;
@@ -7,7 +9,8 @@
   box-shadow: 0 0.5rem 0 var(--color-accent-hover);
   color: var(--color-accent-contrast);
   font-family: var(--font-display);
-  font-size: var(--text-3xl);
+  /* Shrinks with a height-bound button, so "CLICK!" stays inside it. */
+  font-size: min(var(--text-3xl), 9svh);
   font-weight: 800;
   letter-spacing: -0.02em;
   text-transform: uppercase;
