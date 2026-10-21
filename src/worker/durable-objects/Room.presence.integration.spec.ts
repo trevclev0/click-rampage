@@ -55,6 +55,28 @@ afterEach(() => {
 });
 
 describe("Room presence", () => {
+  it("keeps a player online through a WebSocket error", async () => {
+    const stub = room();
+    const watcher = await join(stub);
+    const player = await join(stub);
+    await drain(watcher); // player_joined
+
+    // The runtime calls webSocketError for non-disconnection errors, so the
+    // socket is still open afterwards.
+    await runInDurableObject(stub, async (instance, state) => {
+      const [ws] = state.getWebSockets(player.id);
+      await instance.webSocketError(ws);
+    });
+    expect(leaves(await drain(watcher))).toEqual([]);
+    const newcomer = await join(stub);
+    expect(newcomer.welcome.online.map(({ id }) => id)).toContain(player.id);
+
+    // A real close afterwards still announces the leave, once.
+    player.close();
+    const seen = [...(await untilLeft(watcher)), ...(await drain(watcher))];
+    expect(leaves(seen)).toEqual([{ type: "player_left", id: player.id }]);
+  });
+
   it("drops a socket that stops pinging, closes it and announces the leave", async () => {
     const stub = room();
     const watcher = await join(stub);
