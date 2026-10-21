@@ -13,7 +13,10 @@ import { sanitizeErrorText } from "@shared/sanitizeError";
 import { isValidPlayerId } from "@worker/middleware/player";
 import { PLAYER_ID_HEADER } from "./roomConstants";
 
-/** Increments allowed per socket per second; extra ones are dropped. */
+/**
+ * Increments allowed per player per second, across all their sockets;
+ * extra ones are dropped.
+ */
 export const MAX_INCREMENTS_PER_SECOND = 20;
 
 /**
@@ -55,10 +58,14 @@ type SocketAttachment = {
   lastPing: number;
   /** Set once a sweep has handled this socket as gone. */
   swept?: true;
-  /** Start (ms) of the current one-second rate-limit window. */
-  windowStart: number;
-  /** Increments accepted in the current window. */
-  windowCount: number;
+};
+
+/** A player's fixed one-second rate-limit window. */
+type RateWindow = {
+  /** Start (ms) of the current window. */
+  start: number;
+  /** Increments accepted in it. */
+  count: number;
 };
 
 type PlayerRow = Pick<Player, "id" | "name" | "count">;
@@ -104,6 +111,15 @@ export class Room extends DurableObject<Env> {
   #failures = 0;
   /** When #closeStaleSockets last ran. Lost on hibernation, which is fine. */
   #lastSweep = 0;
+  /**
+   * Rate-limit windows by player id, shared by all of a player's sockets
+   * so extra tabs don't add clicks. Kept past a player's leave, so
+   * reconnecting doesn't open a fresh window; #closeStaleSockets prunes
+   * expired ones. Lost on hibernation, which resets a window at most a
+   * second old; a Room holding fresh clicks has a flush pending and stays
+   * awake anyway.
+   */
+  #rateWindows = new Map<string, RateWindow>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -148,8 +164,6 @@ export class Room extends DurableObject<Env> {
       playerId,
       joinSeq,
       lastPing: Date.now(),
-      windowStart: 0,
-      windowCount: 0,
     } satisfies SocketAttachment);
 
     const you = this.getOrCreatePlayer(playerId);
@@ -194,7 +208,7 @@ export class Room extends DurableObject<Env> {
         }
         return;
       case "increment": {
-        if (!this.#allowIncrement(ws, attachment)) return;
+        if (!this.#allowIncrement(playerId)) return;
         const { count } = this.increment(playerId);
         this.#broadcast({ type: "count", id: playerId, count });
         return;
@@ -273,6 +287,11 @@ export class Room extends DurableObject<Env> {
    */
   #closeStaleSockets() {
     this.#lastSweep = Date.now();
+    for (const [playerId, window] of this.#rateWindows) {
+      if (this.#lastSweep - window.start >= 1000) {
+        this.#rateWindows.delete(playerId);
+      }
+    }
     for (const ws of this.ctx.getWebSockets()) {
       if (ws.readyState !== WebSocket.OPEN || !isStale(ws)) continue;
       try {
@@ -286,16 +305,16 @@ export class Room extends DurableObject<Env> {
     }
   }
 
-  /** Fixed one-second window per socket; returns false when over the cap. */
-  #allowIncrement(ws: WebSocket, attachment: SocketAttachment): boolean {
+  /** Fixed one-second window per player; returns false when over the cap. */
+  #allowIncrement(playerId: string): boolean {
     const now = Date.now();
-    if (now - attachment.windowStart >= 1000) {
-      attachment.windowStart = now;
-      attachment.windowCount = 0;
+    let window = this.#rateWindows.get(playerId);
+    if (!window || now - window.start >= 1000) {
+      window = { start: now, count: 0 };
+      this.#rateWindows.set(playerId, window);
     }
-    if (attachment.windowCount >= MAX_INCREMENTS_PER_SECOND) return false;
-    attachment.windowCount += 1;
-    ws.serializeAttachment(attachment);
+    if (window.count >= MAX_INCREMENTS_PER_SECOND) return false;
+    window.count += 1;
     return true;
   }
 
