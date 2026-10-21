@@ -21,15 +21,12 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
-  "workers_dev": true,
+  // Production is served only on the custom domain. The deploy token needs
+  // the clevertrevor.dev zone (Workers Routes: Edit, Zone: Read) to claim
+  // it. env.preview resets both, so previews stay on workers.dev.
+  "workers_dev": false,
   "preview_urls": true,
-  /**
-   * Custom domain (production only). Uncomment, set the hostname, and flip
-   * "workers_dev" to false once the domain is on this Cloudflare account:
-   *
-   * "workers_dev": false,
-   * "routes": [{ "pattern": "app.example.com", "custom_domain": true }],
-   */
+  "routes": [{ "pattern": "rampage.clevertrevor.dev", "custom_domain": true }],
   "vars": {
     "ENVIRONMENT": "production"
   },
