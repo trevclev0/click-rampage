@@ -27,20 +27,38 @@ export function initials({ id, name }: Pick<Player, "id" | "name">): string {
   return result ? result.toLocaleUpperCase() : "?";
 }
 
+interface OrderOptions {
+  /** Ids in the order last shown. Ties keep this order. */
+  previous?: readonly string[];
+  /** Keep `previous` as it is, even where counts say otherwise. */
+  frozen?: boolean;
+}
+
 /**
- * The grid's order: you first, then the most clicks. The sort is stable,
- * so ties keep their order in `players`, which is join order (see
- * `RoomState.online`). Returns a new array of the same player objects,
- * leaving `players` as it was.
+ * The grid's order: you first, then the most clicks. A player only moves
+ * above another by having strictly more clicks, so two players racing at
+ * the same count don't swap on every click. Ties keep their order in
+ * `previous`, and players new to it follow in their order in `players`,
+ * which is join order (see `RoomState.online`). Returns a new array of
+ * the same player objects, leaving `players` as it was.
  */
-export const orderPlayers = (
+export function orderPlayers(
   players: readonly Player[],
   youId: string | undefined,
-): Player[] =>
-  players.toSorted(
+  { previous = [], frozen = false }: OrderOptions = {},
+): Player[] {
+  const shown = new Map(previous.map((id, index) => [id, index]));
+  const joinIndex = new Map(players.map(({ id }, index) => [id, index]));
+  const rank = ({ id }: Player) =>
+    shown.get(id) ?? previous.length + (joinIndex.get(id) ?? 0);
+
+  return players.toSorted(
     (a, b) =>
-      Number(b.id === youId) - Number(a.id === youId) || b.count - a.count,
+      Number(b.id === youId) - Number(a.id === youId) ||
+      (frozen ? 0 : b.count - a.count) ||
+      rank(a) - rank(b),
   );
+}
 
 export const AVATAR_TONES = 8;
 
