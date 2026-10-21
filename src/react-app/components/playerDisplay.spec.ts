@@ -88,6 +88,66 @@ describe("orderPlayers", () => {
     // still skip rendering.
     for (const p of ordered) expect(joined).toContain(p);
   });
+
+  it("keeps the order shown for ties, passing only on strictly more", () => {
+    const shown = ["me", "c", "d"];
+    const race = (c: number, d: number) =>
+      ids(
+        orderPlayers([player("d", d), player("me", 0), player("c", c)], "me", {
+          previous: shown,
+        }),
+      );
+
+    // d catches up with c, but doesn't pass, so nothing moves.
+    expect(race(5, 5)).toEqual(["me", "c", "d"]);
+    expect(race(6, 7)).toEqual(["me", "d", "c"]);
+    // Ties go by what was shown, not by join order (d joined first).
+    expect(race(4, 4)).toEqual(["me", "c", "d"]);
+  });
+
+  it("puts players new to the order after it, in join order", () => {
+    const players = [player("x", 0), player("me", 0), player("y", 0)];
+
+    expect(
+      ids(
+        orderPlayers([...players, player("a", 0)], "me", {
+          previous: ["me", "a"],
+        }),
+      ),
+    ).toEqual(["me", "a", "x", "y"]);
+    // A newcomer with more clicks still passes.
+    expect(
+      ids(
+        orderPlayers([player("x", 3), player("me", 0)], "me", {
+          previous: ["me", "a"],
+        }),
+      ),
+    ).toEqual(["me", "x"]);
+  });
+
+  it("keeps the shown order while frozen, adding newcomers at the end", () => {
+    const players = [player("b", 9), player("me", 0), player("a", 1)];
+
+    expect(
+      ids(
+        orderPlayers([...players, player("n", 50)], "me", {
+          previous: ["me", "a", "gone", "b"],
+          frozen: true,
+        }),
+      ),
+    ).toEqual(["me", "a", "b", "n"]);
+  });
+
+  it("puts you first even while frozen", () => {
+    expect(
+      ids(
+        orderPlayers([player("a", 1), player("me", 0)], "me", {
+          previous: ["a"],
+          frozen: true,
+        }),
+      ),
+    ).toEqual(["me", "a"]);
+  });
 });
 
 describe("avatarTone", () => {
