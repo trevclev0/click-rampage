@@ -435,3 +435,78 @@ describe("Room write batching", () => {
     });
   });
 });
+
+describe("Room rate limit", () => {
+  const clicks = (messages: ServerMessage[], id: string) =>
+    messages.filter((m) => m.type === "count" && m.id === id);
+
+  it("shares one player's limit across all their sockets", async () => {
+    const stub = room();
+    const id = newPlayerId();
+    const a = await connectToRoom(stub, id);
+    await a.next(); // welcome
+    const b = await connectToRoom(stub, id);
+    await b.next(); // welcome
+    freezeTime();
+
+    for (let i = 0; i < 100; i++) {
+      a.send({ type: "increment" });
+      b.send({ type: "increment" });
+    }
+    // b first: once b's own pong is back, every click from both sockets
+    // has been handled, so a's drain sees every broadcast.
+    await drain(b);
+    const seen = clicks(await drain(a), id);
+
+    expect(seen).toHaveLength(MAX_INCREMENTS_PER_SECOND);
+    expect(seen.at(-1)).toMatchObject({ count: MAX_INCREMENTS_PER_SECOND });
+
+    // The next window opens for both sockets.
+    await advanceTime(stub, 1000);
+    b.send({ type: "increment" });
+    expect(clicks(await drain(b), id)).toEqual([
+      { type: "count", id, count: MAX_INCREMENTS_PER_SECOND + 1 },
+    ]);
+  });
+
+  it("doesn't refill a player's window when they reconnect", async () => {
+    const stub = room();
+    const id = newPlayerId();
+    const first = await connectToRoom(stub, id);
+    await first.next(); // welcome
+    freezeTime();
+
+    for (let i = 0; i < 100; i++) first.send({ type: "increment" });
+    expect(clicks(await drain(first), id)).toHaveLength(
+      MAX_INCREMENTS_PER_SECOND,
+    );
+    first.close();
+
+    // Still inside the same second, so a new socket finds it spent.
+    const again = await connectToRoom(stub, id);
+    await again.next(); // welcome
+    again.send({ type: "increment" });
+    expect(clicks(await drain(again), id)).toEqual([]);
+  });
+
+  it("gives each player their own limit", async () => {
+    const stub = room();
+    const ana = newPlayerId();
+    const bo = newPlayerId();
+    const a = await connectToRoom(stub, ana);
+    await a.next(); // welcome
+    const b = await connectToRoom(stub, bo);
+    await b.next(); // welcome
+    freezeTime();
+
+    for (let i = 0; i < 100; i++) {
+      a.send({ type: "increment" });
+      b.send({ type: "increment" });
+    }
+    await drain(b);
+    const seen = await drain(a);
+
+    expect(clicks(seen, ana)).toHaveLength(MAX_INCREMENTS_PER_SECOND);
+    expect(clicks(seen, bo)).toHaveLength(MAX_INCREMENTS_PER_SECOND);
+  });
+});
