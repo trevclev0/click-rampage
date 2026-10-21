@@ -246,8 +246,12 @@ export class Room extends DurableObject<Env> {
     }
   }
 
-  async webSocketError(ws: WebSocket) {
-    this.#handleDisconnect(ws);
+  /**
+   * Not a leave: the runtime calls this for non-disconnection errors, so the
+   * socket may still be open. If it isn't, webSocketClose or the stale sweep
+   * handles the leave.
+   */
+  async webSocketError(_ws: WebSocket) {
     this.#closeStaleSockets();
   }
 
