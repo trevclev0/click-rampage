@@ -179,10 +179,15 @@ live in `vite.config.ts`.
 
 ## Environments & Deployment
 
-| Environment | Trigger | Wrangler env | Worker name |
-|---|---|---|---|
-| Production | Push to `main` | _(default)_ | `click-rampage` |
-| Preview | Pull request | `preview` | `click-rampage-preview-pr-<n>` |
+| Environment | Trigger | Wrangler env | Worker name | URL |
+|---|---|---|---|---|
+| Production | Push to `main` | _(default)_ | `click-rampage` | `https://rampage.clevertrevor.dev` (custom domain; `workers_dev` off) |
+| Preview | Pull request | `preview` | `click-rampage-preview-pr-<n>` | `workers.dev` URL posted to the PR's GitHub Deployment |
+
+The custom domain is claimed by the production deploy itself (`routes` with
+`custom_domain: true` in `wrangler.jsonc`), so `CLOUDFLARE_API_TOKEN` must
+include the `clevertrevor.dev` zone. Preview deploys never touch it, so a
+green PR does not prove the token can; only the deploy on `main` does.
 
 `.github/workflows/deploy.yml` builds (with `CLOUDFLARE_ENV=preview` on PRs so
 the Vite plugin flattens `env.preview` into the build output), deploys, and

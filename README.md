@@ -3,6 +3,8 @@
 A real-time multiplayer click counter on Cloudflare Workers. Hit the button,
 watch everyone's counts climb live.
 
+**Play it at [rampage.clevertrevor.dev](https://rampage.clevertrevor.dev).**
+
 Generated from [`trevclev0/cf-starter`](https://github.com/trevclev0/cf-starter):
 React + TanStack Router/Query on the front end, Hono on a single Worker, with
 a Durable Object for shared real-time state.
