@@ -106,4 +106,25 @@ describe("roomReducer", () => {
       expect(next).toMatchObject({ status, you, online: [], latency: null });
     },
   );
+
+  const leaderboard: ServerMessage = {
+    type: "leaderboard",
+    total: 10,
+    top: [{ ...them, rank: 1 }],
+    you: { rank: 2, count: 3 },
+  };
+
+  it("leaderboard replaces the last snapshot", () => {
+    expect(initialRoomState.leaderboard).toBeNull();
+    expect(receive(connected, leaderboard).leaderboard).toEqual(leaderboard);
+  });
+
+  it("keeps the leaderboard across a disconnect", () => {
+    const next = roomReducer(receive(connected, leaderboard), {
+      type: "status",
+      status: "disconnected",
+    });
+
+    expect(next.leaderboard).toEqual(leaderboard);
+  });
 });

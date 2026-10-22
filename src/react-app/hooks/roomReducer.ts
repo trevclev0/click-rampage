@@ -1,5 +1,5 @@
 import type { Player } from "@shared/player";
-import type { ServerMessage } from "@shared/protocol";
+import type { LeaderboardMessage, ServerMessage } from "@shared/protocol";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
@@ -18,6 +18,11 @@ export interface RoomState {
   /** Round-trip time of the last ping, in milliseconds. */
   latency: number | null;
   lastError: ServerError | null;
+  /**
+   * The last all-time standings the Room pushed. Kept across disconnects:
+   * offline players are on it anyway, so it stays worth showing.
+   */
+  leaderboard: LeaderboardMessage | null;
 }
 
 export type RoomAction =
@@ -30,6 +35,7 @@ export const initialRoomState: RoomState = {
   online: [],
   latency: null,
   lastError: null,
+  leaderboard: null,
 };
 
 const updatePlayer = (
@@ -77,6 +83,8 @@ function applyMessage(
       return updatePlayer(state, message.id, { name: message.name });
     case "pong":
       return { ...state, latency: Math.max(0, receivedAt - message.t) };
+    case "leaderboard":
+      return { ...state, leaderboard: message };
     case "error":
       return { ...state, lastError: message };
   }
