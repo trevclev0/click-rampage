@@ -1,5 +1,9 @@
+/* minmax(0, 1fr): an implicit column grows to its widest content, so one
+   unbreakable name (say, on the leaderboard) would widen the whole page
+   past a phone screen instead of shrinking to its ellipsis. */
 .shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   min-height: 100vh;
 }
