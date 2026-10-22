@@ -83,3 +83,19 @@ export async function drain(socket: TestSocket) {
     seen.push(message);
   }
 }
+
+/**
+ * Reads a new socket's `welcome` and the `leaderboard` the Room sends right
+ * after it, so a test can go on to whatever follows the join.
+ */
+export async function nextWelcome(socket: TestSocket) {
+  const welcome = await socket.next();
+  if (welcome.type !== "welcome") {
+    throw new Error(`expected welcome, got ${welcome.type}`);
+  }
+  const leaderboard = await socket.next();
+  if (leaderboard.type !== "leaderboard") {
+    throw new Error(`expected leaderboard, got ${leaderboard.type}`);
+  }
+  return welcome;
+}

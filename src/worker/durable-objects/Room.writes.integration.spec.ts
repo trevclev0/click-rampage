@@ -4,11 +4,13 @@ import type { ServerMessage } from "@shared/protocol";
 import {
   connectToRoom,
   drain,
+  nextWelcome,
   type TestSocket,
 } from "@worker/test-utils/socket";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FLUSH_INTERVAL_MS,
+  LEADERBOARD_INTERVAL_MS,
   MAX_FLUSH_RETRY_MS,
   MAX_INCREMENTS_PER_SECOND,
 } from "./Room";
@@ -94,7 +96,7 @@ describe("Room write batching", () => {
     const stub = room();
     const id = newPlayerId();
     const socket = await connectToRoom(stub, id);
-    await socket.next(); // welcome
+    await nextWelcome(socket);
     const rowsWritten = await runInDurableObject(stub, (_, state) =>
       trackRowsWritten(state),
     );
@@ -121,9 +123,9 @@ describe("Room write batching", () => {
     const stub = room();
     const id = newPlayerId();
     const idle = await connectToRoom(stub, newPlayerId()); // cached, never clicks
-    await idle.next(); // welcome
+    await nextWelcome(idle);
     const socket = await connectToRoom(stub, id);
-    await socket.next(); // welcome
+    await nextWelcome(socket);
     const rowsWritten = await runInDurableObject(stub, (_, state) =>
       trackRowsWritten(state),
     );
@@ -165,9 +167,9 @@ describe("Room write batching", () => {
     const stub = room();
     const id = newPlayerId();
     const watcher = await connectToRoom(stub, newPlayerId());
-    await watcher.next(); // welcome
+    await nextWelcome(watcher);
     const player = await connectToRoom(stub, id);
-    await player.next(); // welcome
+    await nextWelcome(player);
     freezeTime(); // so only the close can have written the clicks
 
     for (let i = 0; i < 3; i++) player.send({ type: "increment" });
@@ -176,16 +178,20 @@ describe("Room write batching", () => {
     await nextOfType(watcher, "player_left");
 
     expect(await readStoredCount(stub, id)).toBe(3);
-    // Nothing is dirty, so no flush timer is left keeping the Room awake.
+    // Nothing is dirty, so no flush timer is left keeping the Room awake:
+    // the one timer is the leaderboard push the watcher is still owed.
+    expect(await runInDurableObject(stub, () => vi.getTimerCount())).toBe(1);
+    await advanceTime(stub, LEADERBOARD_INTERVAL_MS);
+    await nextOfType(watcher, "leaderboard");
     expect(await runInDurableObject(stub, () => vi.getTimerCount())).toBe(0);
   });
 
   it("backs off after a failed departure write, too", async () => {
     const stub = room();
     const watcher = await connectToRoom(stub, newPlayerId());
-    await watcher.next(); // welcome
+    await nextWelcome(watcher);
     const visitor = await connectToRoom(stub, newPlayerId());
-    await visitor.next(); // welcome
+    await nextWelcome(visitor);
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     freezeTime();
 
@@ -210,9 +216,9 @@ describe("Room write batching", () => {
     const stub = room();
     const leaver = newPlayerId();
     const watcher = await connectToRoom(stub, newPlayerId());
-    await watcher.next(); // welcome
+    await nextWelcome(watcher);
     const visitor = await connectToRoom(stub, leaver);
-    await visitor.next(); // welcome
+    await nextWelcome(visitor);
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     freezeTime();
 
@@ -252,9 +258,9 @@ describe("Room write batching", () => {
     const clicker = newPlayerId();
     const leaver = newPlayerId();
     const socket = await connectToRoom(stub, clicker);
-    await socket.next(); // welcome
+    await nextWelcome(socket);
     const visitor = await connectToRoom(stub, leaver);
-    await visitor.next(); // welcome
+    await nextWelcome(visitor);
     const rowsWritten = await runInDurableObject(stub, (_, state) =>
       trackRowsWritten(state),
     );
@@ -397,7 +403,7 @@ describe("Room write batching", () => {
     const stub = room();
     const id = newPlayerId();
     const watcher = await connectToRoom(stub, newPlayerId());
-    await watcher.next(); // welcome
+    await nextWelcome(watcher);
     freezeTime();
     for (let i = 0; i < 3; i++) await stub.increment(id);
 
@@ -444,9 +450,9 @@ describe("Room rate limit", () => {
     const stub = room();
     const id = newPlayerId();
     const a = await connectToRoom(stub, id);
-    await a.next(); // welcome
+    await nextWelcome(a);
     const b = await connectToRoom(stub, id);
-    await b.next(); // welcome
+    await nextWelcome(b);
     freezeTime();
 
     for (let i = 0; i < 100; i++) {
@@ -473,7 +479,7 @@ describe("Room rate limit", () => {
     const stub = room();
     const id = newPlayerId();
     const first = await connectToRoom(stub, id);
-    await first.next(); // welcome
+    await nextWelcome(first);
     freezeTime();
 
     for (let i = 0; i < 100; i++) first.send({ type: "increment" });
@@ -484,7 +490,7 @@ describe("Room rate limit", () => {
 
     // Still inside the same second, so a new socket finds it spent.
     const again = await connectToRoom(stub, id);
-    await again.next(); // welcome
+    await nextWelcome(again);
     again.send({ type: "increment" });
     expect(clicks(await drain(again), id)).toEqual([]);
   });
@@ -494,9 +500,9 @@ describe("Room rate limit", () => {
     const ana = newPlayerId();
     const bo = newPlayerId();
     const a = await connectToRoom(stub, ana);
-    await a.next(); // welcome
+    await nextWelcome(a);
     const b = await connectToRoom(stub, bo);
-    await b.next(); // welcome
+    await nextWelcome(b);
     freezeTime();
 
     for (let i = 0; i < 100; i++) {
