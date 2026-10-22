@@ -405,14 +405,16 @@ export class Room extends DurableObject<Env> {
   /** The all-time standings as `playerId` should see them. */
   leaderboard(playerId?: string): LeaderboardMessage {
     const ranked = rankStandings(this.#loadStandings().values());
-    return this.#leaderboardFor(ranked, playerId);
+    return this.#leaderboardFor(
+      ranked,
+      ranked.find(({ id }) => id === playerId),
+    );
   }
 
   #leaderboardFor(
     ranked: RankedPlayer[],
-    playerId: string | undefined,
+    you: RankedPlayer | undefined,
   ): LeaderboardMessage {
-    const you = ranked.find(({ id }) => id === playerId);
     return {
       type: "leaderboard",
       total: this.#total,
@@ -481,16 +483,22 @@ export class Room extends DurableObject<Env> {
 
   /** Sends every open socket the standings, ranked once, with its own rank. */
   #pushLeaderboard() {
+    const sockets = this.#openSockets();
+    // Everyone left while the push was pending.
+    if (sockets.length === 0) return;
     const ranked = this.#tryLeaderboard(() =>
       rankStandings(this.#loadStandings().values()),
     );
     if (!ranked) return;
+    const rankedById = new Map(ranked.map((player) => [player.id, player]));
     const byPlayer = new Map<string, string>();
-    for (const socket of this.#openSockets()) {
+    for (const socket of sockets) {
       const { playerId } = socket.deserializeAttachment() as SocketAttachment;
       let data = byPlayer.get(playerId);
       if (data === undefined) {
-        data = JSON.stringify(this.#leaderboardFor(ranked, playerId));
+        data = JSON.stringify(
+          this.#leaderboardFor(ranked, rankedById.get(playerId)),
+        );
         byPlayer.set(playerId, data);
       }
       socket.send(data);
