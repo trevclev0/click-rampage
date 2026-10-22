@@ -258,6 +258,25 @@ describe("Room leaderboard", () => {
     });
   });
 
+  it("skips a push owed after everyone has left", async () => {
+    const stub = room();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Every standings read fails and logs, so a log means one was tried.
+    await failStandingsReads(stub);
+    const socket = await connectToRoom(stub, newPlayerId());
+    await socket.next(); // welcome
+    freezeTime();
+    socket.send({ type: "increment" });
+    await drain(socket);
+    socket.close();
+    await runInDurableObject(stub, async () => {}); // close delivered
+    errors.mockClear();
+
+    await advanceTime(stub, LEADERBOARD_INTERVAL_MS);
+
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it("pushes a rename to everyone", async () => {
     const stub = room();
     const id = newPlayerId();
