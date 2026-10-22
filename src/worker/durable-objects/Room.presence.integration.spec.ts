@@ -4,6 +4,7 @@ import type { ServerMessage } from "@shared/protocol";
 import {
   connectToRoom,
   drain,
+  nextWelcome,
   type TestSocket,
 } from "@worker/test-utils/socket";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,8 +19,7 @@ const newPlayerId = () => crypto.randomUUID().replaceAll("-", "");
 
 async function join(stub: RoomStub, playerId = newPlayerId()) {
   const socket = await connectToRoom(stub, playerId);
-  const welcome = await socket.next();
-  if (welcome.type !== "welcome") throw new Error("expected welcome");
+  const welcome = await nextWelcome(socket);
   return { ...socket, id: playerId, welcome };
 }
 

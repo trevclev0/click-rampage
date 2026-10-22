@@ -1,7 +1,7 @@
 import { exports } from "cloudflare:workers";
 import { defaultPlayerName } from "@shared/player";
 import { derivePlayerId } from "@worker/middleware/player";
-import { connect, ORIGIN } from "@worker/test-utils/socket";
+import { connect, nextWelcome, ORIGIN } from "@worker/test-utils/socket";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const TOKEN = crypto.randomUUID();
@@ -70,7 +70,7 @@ describe("GET /api/ws", () => {
 
   it("answers ping with pong", async () => {
     const socket = await connect(cookie(TOKEN));
-    await socket.next(); // welcome
+    await nextWelcome(socket);
 
     socket.send({ type: "ping", t: 42 });
 
@@ -79,7 +79,7 @@ describe("GET /api/ws", () => {
 
   it("reports invalid messages and keeps the socket open", async () => {
     const socket = await connect(cookie(TOKEN));
-    await socket.next(); // welcome
+    await nextWelcome(socket);
 
     socket.send("not json");
     expect(await socket.next()).toMatchObject({

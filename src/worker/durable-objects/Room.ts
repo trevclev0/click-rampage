@@ -5,6 +5,7 @@ import {
   type Player,
 } from "@shared/player";
 import {
+  type LeaderboardMessage,
   PING_INTERVAL_MS,
   parseClientMessage,
   type ServerMessage,
@@ -12,6 +13,7 @@ import {
 import { sanitizeErrorText } from "@shared/sanitizeError";
 import { isValidPlayerId } from "@worker/middleware/player";
 import { PLAYER_ID_HEADER } from "./roomConstants";
+import { type RankedPlayer, rankStandings } from "./standings";
 
 /**
  * Increments allowed per player per second, across all their sockets;
@@ -38,6 +40,15 @@ export const MAX_FLUSH_RETRY_MS = 60_000;
  * pings can reach 90 s; this covers it with slack, so such a tab stays online.
  */
 export const STALE_SOCKET_MS = 3 * PING_INTERVAL_MS + 30_000;
+
+/** Players listed on the all-time leaderboard. */
+export const LEADERBOARD_SIZE = 10;
+
+/**
+ * Longest a change waits before the Room pushes new standings. Pushes go
+ * out only after a change, so an idle Room sends none.
+ */
+export const LEADERBOARD_INTERVAL_MS = 5000;
 
 /** Least time between the stale-socket sweeps that pings trigger. */
 export const PING_SWEEP_INTERVAL_MS = 10_000;
@@ -120,6 +131,17 @@ export class Room extends DurableObject<Env> {
    * awake anyway.
    */
   #rateWindows = new Map<string, RateWindow>();
+  /**
+   * Every player with clicks, offline ones included, for the leaderboard.
+   * Loaded from SQLite on first use (one read per wake, no index, so no
+   * extra rows written per flush) and kept current by every click and
+   * rename after that. Lost on hibernation, which is fine: a Room with
+   * unflushed clicks never hibernates, so a reload misses nothing.
+   */
+  #standings: Map<string, Player> | undefined;
+  /** Sum of every count in #standings; only meaningful once it's loaded. */
+  #total = 0;
+  #leaderboardTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -168,6 +190,7 @@ export class Room extends DurableObject<Env> {
 
     const you = this.getOrCreatePlayer(playerId);
     send(server, { type: "welcome", you, online: this.#onlinePlayers() });
+    send(server, this.leaderboard(playerId));
     if (!alreadyOnline) {
       this.#broadcast({ type: "player_joined", player: you }, server);
     }
@@ -351,6 +374,7 @@ export class Room extends DurableObject<Env> {
     player.count += 1;
     this.#dirty.add(player);
     this.#scheduleFlush();
+    this.#standingsChanged(player);
     return { ...player };
   }
 
@@ -371,7 +395,86 @@ export class Room extends DurableObject<Env> {
     player.name = name;
     this.#dirty.delete(player);
     this.#wrote();
+    this.#standingsChanged(player);
     return { ok: true, player: { ...player } };
+  }
+
+  /** The all-time standings as `playerId` should see them. */
+  leaderboard(playerId?: string): LeaderboardMessage {
+    const ranked = rankStandings(this.#loadStandings().values());
+    return this.#leaderboardFor(ranked, playerId);
+  }
+
+  #leaderboardFor(
+    ranked: RankedPlayer[],
+    playerId: string | undefined,
+  ): LeaderboardMessage {
+    const you = ranked.find(({ id }) => id === playerId);
+    return {
+      type: "leaderboard",
+      total: this.#total,
+      top: ranked
+        .slice(0, LEADERBOARD_SIZE)
+        .map(({ id, name, count, rank }) => ({ id, name, count, rank })),
+      you: you ? { rank: you.rank, count: you.count } : null,
+    };
+  }
+
+  /**
+   * SQLite's rows with the cache laid over them, since a cached count can
+   * be up to a flush ahead of its row.
+   */
+  #loadStandings(): Map<string, Player> {
+    if (this.#standings) return this.#standings;
+
+    const standings = new Map<string, Player>();
+    const rows = this.ctx.storage.sql.exec<PlayerRow>(
+      "SELECT id, name, count FROM players WHERE count > 0",
+    );
+    for (const row of rows) standings.set(row.id, row);
+    for (const player of this.#players.values()) {
+      standings.set(player.id, { ...player });
+    }
+    this.#total = 0;
+    for (const { count } of standings.values()) this.#total += count;
+    this.#standings = standings;
+    return standings;
+  }
+
+  /**
+   * Copies a changed player into the standings, if loaded (otherwise the
+   * next load reads the change from the cache), and queues a push. With
+   * nobody connected there is no one to push to, and a pending timer would
+   * only keep the Room awake; whoever connects next gets the standings
+   * with their welcome.
+   */
+  #standingsChanged(player: Player) {
+    if (this.#standings) {
+      const before = this.#standings.get(player.id)?.count ?? 0;
+      this.#total += player.count - before;
+      this.#standings.set(player.id, { ...player });
+    }
+    if (this.#leaderboardTimer !== undefined) return;
+    if (this.#openSockets().length === 0) return;
+    this.#leaderboardTimer = setTimeout(() => {
+      this.#leaderboardTimer = undefined;
+      this.#pushLeaderboard();
+    }, LEADERBOARD_INTERVAL_MS);
+  }
+
+  /** Sends every open socket the standings, ranked once, with its own rank. */
+  #pushLeaderboard() {
+    const ranked = rankStandings(this.#loadStandings().values());
+    const byPlayer = new Map<string, string>();
+    for (const socket of this.#openSockets()) {
+      const { playerId } = socket.deserializeAttachment() as SocketAttachment;
+      let data = byPlayer.get(playerId);
+      if (data === undefined) {
+        data = JSON.stringify(this.#leaderboardFor(ranked, playerId));
+        byPlayer.set(playerId, data);
+      }
+      socket.send(data);
+    }
   }
 
   /** Writes every dirty count to SQLite now (see `#write`). */
