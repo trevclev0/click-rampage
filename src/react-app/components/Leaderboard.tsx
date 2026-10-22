@@ -56,12 +56,16 @@ export function Leaderboard() {
   }
 
   const { top, total } = leaderboard;
-  const onlineIds = new Set(online.map(({ id }) => id));
+  // Online names update on rename; the board's wait for the next push.
+  const onlineNames = new Map(online.map(({ id, name }) => [id, name]));
   const collapsible = top.length > COLLAPSED_SIZE;
   const shown = expanded ? top : top.slice(0, COLLAPSED_SIZE);
   // By id, not rank: a tie can leave you ranked 10th but off the list.
   const youShown = shown.some(({ id }) => id === you?.id);
   const standing = leaderboard.you;
+  // Players listed before you; past the top list, those ranked above you.
+  const youIndex = top.findIndex(({ id }) => id === you?.id);
+  const ahead = youIndex >= 0 ? youIndex : (standing?.rank ?? 1) - 1;
 
   return (
     <section className={styles.section} aria-labelledby={headingId}>
@@ -77,21 +81,24 @@ export function Leaderboard() {
             <Row
               key={entry.id}
               {...entry}
+              name={onlineNames.get(entry.id) ?? entry.name}
               isYou={entry.id === you?.id}
-              online={onlineIds.has(entry.id)}
+              online={onlineNames.has(entry.id)}
             />
           ))}
           {you && standing && !youShown && (
             <>
-              <li className={styles.gap} aria-hidden="true">
-                ⋯
-              </li>
+              {ahead > shown.length && (
+                <li className={styles.gap} aria-hidden="true">
+                  ⋯
+                </li>
+              )}
               <Row
                 rank={standing.rank}
                 name={you.name}
                 count={standing.count}
                 isYou
-                online={onlineIds.has(you.id)}
+                online={onlineNames.has(you.id)}
               />
             </>
           )}

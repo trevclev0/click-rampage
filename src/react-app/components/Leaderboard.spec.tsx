@@ -106,6 +106,35 @@ describe("Leaderboard", () => {
     expect(rowFor("Me")).toHaveTextContent("10");
   });
 
+  it("draws the gap only when players are left out above you", async () => {
+    renderWithRoom(<Leaderboard />);
+    joinRoom(you);
+    const withYou = [...tenPlayers.slice(0, 3), { ...you, rank: 4 }];
+    showBoard(withYou, { rank: 4, count: 412 });
+
+    // Collapsed to the top 3, you're 4th: nobody is skipped.
+    expect(screen.queryByText("⋯")).toBeNull();
+
+    showBoard(tenPlayers, { rank: 12, count: 412 });
+    await userEvent.click(screen.getByRole("button", { name: "Show all 10" }));
+    expect(screen.getByText("⋯")).toBeInTheDocument();
+  });
+
+  it("shows an online player's new name before the next push", () => {
+    const ana = makePlayer({ id: tenPlayers[0].id, name: "Ana" });
+    renderWithRoom(<Leaderboard />);
+    joinRoom(you, [you, ana]);
+    showBoard([
+      { ...tenPlayers[0], name: "Old Ana" },
+      { ...you, name: "Old me", rank: 2 },
+    ]);
+
+    expect(rows()[0]).toHaveTextContent("Ana");
+    expect(rows()[0]).not.toHaveTextContent("Old Ana");
+    expect(rows()[1]).toHaveTextContent("Me");
+    expect(rows()[1]).not.toHaveTextContent("Old me");
+  });
+
   it("marks players who are online now", () => {
     const ana = makePlayer({ id: tenPlayers[0].id, name: "Pro 1" });
     renderWithRoom(<Leaderboard />);
