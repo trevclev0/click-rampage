@@ -206,6 +206,58 @@ describe("Room leaderboard", () => {
     expect(await leaderboards(b)).toEqual([]);
   });
 
+  /**
+   * Makes the standings read fail, as it would past the daily read limit,
+   * while every other statement still runs.
+   */
+  const failStandingsReads = (stub: RoomStub) =>
+    runInDurableObject(stub, (_, state) => {
+      const { sql } = state.storage;
+      const exec = sql.exec.bind(sql);
+      vi.spyOn(sql, "exec").mockImplementation((query, ...bindings) => {
+        if (query.includes("count > 0")) throw new Error("rows read limit");
+        return exec(query, ...bindings);
+      });
+    });
+
+  it("still lets players join when the standings can't be read", async () => {
+    const stub = room();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await failStandingsReads(stub);
+
+    const socket = await connectToRoom(stub, newPlayerId());
+
+    expect((await socket.next()).type).toBe("welcome");
+    // The socket works, and no leaderboard came before the pong.
+    expect(await leaderboards(socket)).toEqual([]);
+    expect(JSON.parse(String(errors.mock.calls[0]?.[0]))).toMatchObject({
+      level: "error",
+      event: "room_leaderboard_failed",
+      message: expect.stringContaining("rows read limit"),
+    });
+  });
+
+  it("keeps the game running when a push can't read the standings", async () => {
+    const stub = room();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await failStandingsReads(stub);
+    const id = newPlayerId();
+    const socket = await connectToRoom(stub, id);
+    await socket.next(); // welcome
+    freezeTime();
+    socket.send({ type: "increment" });
+    await drain(socket);
+
+    await advanceTime(stub, LEADERBOARD_INTERVAL_MS);
+
+    socket.send({ type: "increment" });
+    expect(await nextOfType(socket, "count")).toEqual({
+      type: "count",
+      id,
+      count: 2,
+    });
+  });
+
   it("pushes a rename to everyone", async () => {
     const stub = room();
     const id = newPlayerId();

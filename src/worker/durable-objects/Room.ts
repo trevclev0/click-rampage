@@ -133,9 +133,11 @@ export class Room extends DurableObject<Env> {
   #rateWindows = new Map<string, RateWindow>();
   /**
    * Every player with clicks, offline ones included, for the leaderboard.
-   * Loaded from SQLite on first use (one read per wake, no index, so no
-   * extra rows written per flush) and kept current by every click and
-   * rename after that. Lost on hibernation, which is fine: a Room with
+   * Loaded from SQLite on first use and kept current by every click and
+   * rename after that. With no index on `count` (one would add rows
+   * written to every flush), a load scans the whole table: one row read
+   * per player ever seen, zero-click visitors included, once per wake that
+   * needs standings. Lost on hibernation, which is fine: a Room with
    * unflushed clicks never hibernates, so a reload misses nothing.
    */
   #standings: Map<string, Player> | undefined;
@@ -190,7 +192,8 @@ export class Room extends DurableObject<Env> {
 
     const you = this.getOrCreatePlayer(playerId);
     send(server, { type: "welcome", you, online: this.#onlinePlayers() });
-    send(server, this.leaderboard(playerId));
+    const board = this.#tryLeaderboard(() => this.leaderboard(playerId));
+    if (board) send(server, board);
     if (!alreadyOnline) {
       this.#broadcast({ type: "player_joined", player: you }, server);
     }
@@ -462,9 +465,26 @@ export class Room extends DurableObject<Env> {
     }, LEADERBOARD_INTERVAL_MS);
   }
 
+  /**
+   * Runs a leaderboard read, logging and returning null if it fails (say,
+   * past the daily rows-read limit), so the board can't take joins or
+   * clicks down with it.
+   */
+  #tryLeaderboard<T>(read: () => T): T | null {
+    try {
+      return read();
+    } catch (error) {
+      logRoomError("room_leaderboard_failed", error);
+      return null;
+    }
+  }
+
   /** Sends every open socket the standings, ranked once, with its own rank. */
   #pushLeaderboard() {
-    const ranked = rankStandings(this.#loadStandings().values());
+    const ranked = this.#tryLeaderboard(() =>
+      rankStandings(this.#loadStandings().values()),
+    );
+    if (!ranked) return;
     const byPlayer = new Map<string, string>();
     for (const socket of this.#openSockets()) {
       const { playerId } = socket.deserializeAttachment() as SocketAttachment;
@@ -518,7 +538,10 @@ export class Room extends DurableObject<Env> {
       return written;
     } catch (error) {
       this.#failures += 1;
-      logFlushError(error, this.#dirty.size, this.#failures);
+      logRoomError("room_flush_failed", error, {
+        pendingPlayers: this.#dirty.size,
+        failures: this.#failures,
+      });
       // A failed departure write can leave the normal 1 s timer pending;
       // replace it so the retry really backs off.
       this.#cancelFlush();
@@ -626,21 +649,21 @@ function isStale(ws: WebSocket): boolean {
 }
 
 /**
- * One structured line per failed flush, like `utils/errorHandler.ts`. The
- * retry backoff bounds how often this runs while writes keep failing.
+ * One structured line per Room storage failure, like
+ * `utils/errorHandler.ts`. Flush retries back off, and leaderboard reads
+ * happen at most once per join or push, which bounds how often this runs.
  */
-function logFlushError(
+function logRoomError(
+  event: string,
   error: unknown,
-  pendingPlayers: number,
-  failures: number,
+  fields: Record<string, number> = {},
 ) {
   console.error(
     JSON.stringify({
       ts: new Date().toISOString(),
       level: "error",
-      event: "room_flush_failed",
-      pendingPlayers,
-      failures,
+      event,
+      ...fields,
       message: sanitizeErrorText(
         error instanceof Error ? error.message : error,
       ),
