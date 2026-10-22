@@ -1,5 +1,6 @@
 import { ClickButton } from "@components/ClickButton";
 import { ConnectionDetails } from "@components/ConnectionDetails";
+import { Leaderboard } from "@components/Leaderboard";
 import { PlayerGrid } from "@components/PlayerGrid";
 import { RenameDialog } from "@components/RenameDialog";
 import { YourCount } from "@components/YourCount";
@@ -23,6 +24,7 @@ function HomePage() {
         <RenameDialog />
       </div>
       <PlayerGrid />
+      <Leaderboard />
       <ConnectionDetails />
     </section>
   );
