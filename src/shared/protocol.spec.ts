@@ -68,6 +68,30 @@ describe("serverMessageSchema", () => {
         .success,
     ).toBe(false);
   });
+
+  const leaderboard = {
+    type: "leaderboard",
+    total: 12,
+    top: [{ id: "a", name: "Ana", count: 12, rank: 1 }],
+    you: { rank: 1, count: 12 },
+  };
+
+  it("accepts a leaderboard, with or without your rank", () => {
+    expect(serverMessageSchema.parse(leaderboard)).toEqual(leaderboard);
+    expect(
+      serverMessageSchema.safeParse({ ...leaderboard, you: null }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    ["a zero rank", { top: [{ id: "a", name: "Ana", count: 12, rank: 0 }] }],
+    ["a negative total", { total: -1 }],
+    ["a zero-click you", { you: { rank: 1, count: 0 } }],
+  ])("rejects a leaderboard with %s", (_, patch) => {
+    expect(
+      serverMessageSchema.safeParse({ ...leaderboard, ...patch }).success,
+    ).toBe(false);
+  });
 });
 
 describe("parseServerMessage", () => {
