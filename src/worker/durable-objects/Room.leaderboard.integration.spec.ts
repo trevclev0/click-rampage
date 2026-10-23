@@ -8,6 +8,13 @@ import {
 } from "@worker/test-utils/socket";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LEADERBOARD_INTERVAL_MS, LEADERBOARD_SIZE } from "./Room";
+import { rankStandings } from "./standings";
+
+// The real ranking, wrapped so a test can count the sorts.
+vi.mock(import("./standings"), async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, rankStandings: vi.fn(actual.rankStandings) };
+});
 
 // Each test uses its own Room instance (unique name) so standings and
 // timers never leak between tests.
@@ -155,6 +162,21 @@ describe("Room leaderboard", () => {
       expect(exec).toHaveBeenCalled();
       expect(rowsWritten).toBe(0);
     });
+  });
+
+  it("ranks again only after the standings change", async () => {
+    const stub = room();
+    await addOfflinePlayer(stub, "Veteran", 10);
+    const id = newPlayerId();
+    vi.mocked(rankStandings).mockClear();
+
+    await stub.leaderboard(id);
+    await stub.leaderboard(newPlayerId());
+    expect(rankStandings).toHaveBeenCalledTimes(1);
+
+    await stub.increment(id);
+    expect((await stub.leaderboard(id)).you).toEqual({ rank: 2, count: 1 });
+    expect(rankStandings).toHaveBeenCalledTimes(2);
   });
 
   it("sends the standings right after welcome", async () => {

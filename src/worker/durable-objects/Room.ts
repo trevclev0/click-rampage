@@ -143,6 +143,8 @@ export class Room extends DurableObject<Env> {
   #standings: Map<string, Player> | undefined;
   /** Sum of every count in #standings; only meaningful once it's loaded. */
   #total = 0;
+  /** #standings sorted, kept until a click or rename changes them. */
+  #ranked: RankedPlayer[] | undefined;
   #leaderboardTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -404,11 +406,20 @@ export class Room extends DurableObject<Env> {
 
   /** The all-time standings as `playerId` should see them. */
   leaderboard(playerId?: string): LeaderboardMessage {
-    const ranked = rankStandings(this.#loadStandings().values());
+    const ranked = this.#rankedStandings();
     return this.#leaderboardFor(
       ranked,
       ranked.find(({ id }) => id === playerId),
     );
+  }
+
+  /**
+   * Sorts only after a change, so a wave of joins (say, everyone
+   * reconnecting after a deploy) doesn't re-sort every past clicker per tab.
+   */
+  #rankedStandings(): RankedPlayer[] {
+    this.#ranked ??= rankStandings(this.#loadStandings().values());
+    return this.#ranked;
   }
 
   #leaderboardFor(
@@ -459,6 +470,7 @@ export class Room extends DurableObject<Env> {
       this.#total += player.count - before;
       this.#standings.set(player.id, { ...player });
     }
+    this.#ranked = undefined;
     if (this.#leaderboardTimer !== undefined) return;
     if (this.#openSockets().length === 0) return;
     this.#leaderboardTimer = setTimeout(() => {
@@ -486,9 +498,7 @@ export class Room extends DurableObject<Env> {
     const sockets = this.#openSockets();
     // Everyone left while the push was pending.
     if (sockets.length === 0) return;
-    const ranked = this.#tryLeaderboard(() =>
-      rankStandings(this.#loadStandings().values()),
-    );
+    const ranked = this.#tryLeaderboard(() => this.#rankedStandings());
     if (!ranked) return;
     const rankedById = new Map(ranked.map((player) => [player.id, player]));
     const byPlayer = new Map<string, string>();
