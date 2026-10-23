@@ -2,7 +2,12 @@ import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import type { ServerMessage } from "@shared/protocol";
 import { derivePlayerId } from "@worker/middleware/player";
-import { connect, connectToRoom, drain } from "@worker/test-utils/socket";
+import {
+  connect,
+  connectToRoom,
+  drain,
+  nextWelcome,
+} from "@worker/test-utils/socket";
 import { describe, expect, it } from "vitest";
 import { MAX_INCREMENTS_PER_SECOND, Room } from "./Room";
 
@@ -15,8 +20,7 @@ async function newPlayer() {
 
 async function join(player: { cookie: string }) {
   const socket = await connect({ Cookie: player.cookie });
-  const welcome = await socket.next();
-  if (welcome.type !== "welcome") throw new Error("expected welcome");
+  const welcome = await nextWelcome(socket);
   return { ...socket, welcome };
 }
 
@@ -176,8 +180,7 @@ describe("Room join order", () => {
 
   async function joinRoom(stub: Pick<RoomStub, "fetch">, id: string) {
     const socket = await connectToRoom(stub, id);
-    const welcome = await socket.next();
-    if (welcome.type !== "welcome") throw new Error("expected welcome");
+    const welcome = await nextWelcome(socket);
     return { ...socket, welcome };
   }
 

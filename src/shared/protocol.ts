@@ -29,6 +29,13 @@ const playerSchema = z.object({
   count: z.number().int().nonnegative(),
 });
 
+/** A player with at least one click, ranked by all-time count. */
+const leaderboardEntrySchema = playerSchema.extend({
+  count: z.number().int().positive(),
+  /** Tied players share a rank (1, 2, 2, 4). */
+  rank: z.number().int().positive(),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("increment") }),
   z.object({
@@ -57,6 +64,15 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("renamed"), id: z.string(), name: z.string() }),
   z.object({ type: z.literal("pong"), t: z.number() }),
   z.object({
+    type: z.literal("leaderboard"),
+    /** Every click ever counted in the room, offline players included. */
+    total: z.number().int().nonnegative(),
+    /** The top players, best first. */
+    top: z.array(leaderboardEntrySchema),
+    /** The receiving player's place; null until they have clicked. */
+    you: leaderboardEntrySchema.pick({ rank: true, count: true }).nullable(),
+  }),
+  z.object({
     type: z.literal("error"),
     code: z.enum(errorCodes),
     message: z.string(),
@@ -65,6 +81,11 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+export type LeaderboardEntry = z.infer<typeof leaderboardEntrySchema>;
+export type LeaderboardMessage = Extract<
+  ServerMessage,
+  { type: "leaderboard" }
+>;
 
 /** Parses a raw client frame; `null` means oversized, non-JSON or invalid. */
 export function parseClientMessage(
