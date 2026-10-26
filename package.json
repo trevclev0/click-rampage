@@ -25,15 +25,15 @@
     "deploy:preview": "wrangler deploy --env preview"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.104.4",
-    "@tanstack/react-router": "^1.170.45",
+    "@tanstack/react-query": "^5.104.5",
+    "@tanstack/react-router": "^1.170.46",
     "hono": "4.13.13",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
+    "@biomejs/biome": "^2.6.2",
     "@cloudflare/vite-plugin": "^1.64.0",
     "@cloudflare/vitest-pool-workers": "^0.23.0",
     "@commitlint/cli": "^21.2.4",
@@ -42,7 +42,7 @@
     "@semantic-release/git": "^11.0.1",
     "@semantic-release/github": "^12.0.8",
     "@semantic-release/npm": "^13.1.5",
-    "@tanstack/router-plugin": "^1.168.47",
+    "@tanstack/router-plugin": "^1.168.48",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -65,8 +65,8 @@
     "semantic-release": "^25.0.9",
     "semantic-release-gitmoji": "^1.6.9",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4",
+    "vite": "^8.3.5",
     "vitest": "^4.1.12",
-    "wrangler": "^4.151.1"
+    "wrangler": "^4.152.0"
   }
 }
