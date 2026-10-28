@@ -53,6 +53,12 @@ export const LEADERBOARD_INTERVAL_MS = 5000;
 /** Least time between the stale-socket sweeps that pings trigger. */
 export const PING_SWEEP_INTERVAL_MS = 10_000;
 
+/** How often the Room's alarm runs {@link Room.prune}. */
+export const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/** How long a zero-click row goes unwritten before the prune deletes it. */
+export const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
 /**
  * Per-socket state. Stored with serializeAttachment because instance fields
  * are lost when the Room hibernates.
@@ -105,7 +111,8 @@ export type RenameResult =
  * (and is billed duration) for as long as it holds dirty counts.
  *
  * A player gets a row only on their first click or rename, so a visitor who
- * never plays costs no rows written.
+ * never plays costs no rows written. A daily alarm deletes zero-click rows
+ * that remain (see {@link Room.prune}).
  *
  * Callers are trusted Worker code: `id` is always the server-issued player
  * id, never a value taken from a client message.
@@ -139,8 +146,8 @@ export class Room extends DurableObject<Env> {
    * Loaded from SQLite on first use and kept current by every click and
    * rename after that. With no index on `count` (one would add rows
    * written to every flush), a load scans the whole table: one row read
-   * per saved player, including renamers who never clicked, once per wake
-   * that needs standings. Lost on hibernation,
+   * per saved player, including zero-click renamers the prune hasn't
+   * reached, once per wake that needs standings. Lost on hibernation,
    * which is fine: a Room with unflushed clicks never hibernates, so a
    * reload misses nothing.
    */
@@ -163,6 +170,10 @@ export class Room extends DurableObject<Env> {
           updated_at INTEGER NOT NULL
         )
       `);
+      // The prune re-arms itself each run; this starts it once per Room.
+      if ((await ctx.storage.getAlarm()) === null) {
+        await ctx.storage.setAlarm(Date.now() + PRUNE_INTERVAL_MS);
+      }
     });
   }
 
@@ -285,6 +296,21 @@ export class Room extends DurableObject<Env> {
    */
   async webSocketError(_ws: WebSocket) {
     this.#closeStaleSockets();
+  }
+
+  /**
+   * Runs {@link Room.prune} once a day. A failed prune is logged rather
+   * than thrown, so the runtime's retries don't spend more writes on it
+   * (say, past the daily write cap); the next day's run tries again.
+   */
+  async alarm() {
+    // Armed first, so a failed prune can't stop the daily runs.
+    await this.ctx.storage.setAlarm(Date.now() + PRUNE_INTERVAL_MS);
+    try {
+      this.prune();
+    } catch (error) {
+      logRoomError("room_prune_failed", error);
+    }
   }
 
   /**
@@ -587,6 +613,21 @@ export class Room extends DurableObject<Env> {
       player.name,
       player.count,
       now,
+    ).rowsWritten;
+  }
+
+  /**
+   * Deletes the rows of players who never clicked and haven't been written
+   * in {@link PRUNE_AFTER_MS}: renamers who never clicked, and visitors from
+   * before rows waited for a first click. A pruned player who returns looks
+   * the same (default names come from the id), except that a renamer is
+   * back to their default name. A cached player keeps their state and is
+   * saved again on their next click or rename. Returns the rows written.
+   */
+  prune(): number {
+    return this.ctx.storage.sql.exec(
+      "DELETE FROM players WHERE count = 0 AND updated_at < ?",
+      Date.now() - PRUNE_AFTER_MS,
     ).rowsWritten;
   }
 
