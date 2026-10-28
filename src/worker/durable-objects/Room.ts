@@ -104,6 +104,9 @@ export type RenameResult =
  * timer keeps the instance from hibernating, so the Room stays in memory
  * (and is billed duration) for as long as it holds dirty counts.
  *
+ * A player gets a row only on their first click or rename, so a visitor who
+ * never plays costs no rows written.
+ *
  * Callers are trusted Worker code: `id` is always the server-issued player
  * id, never a value taken from a client message.
  */
@@ -136,9 +139,10 @@ export class Room extends DurableObject<Env> {
    * Loaded from SQLite on first use and kept current by every click and
    * rename after that. With no index on `count` (one would add rows
    * written to every flush), a load scans the whole table: one row read
-   * per player ever seen, zero-click visitors included, once per wake that
-   * needs standings. Lost on hibernation, which is fine: a Room with
-   * unflushed clicks never hibernates, so a reload misses nothing.
+   * per saved player, including renamers who never clicked, once per wake
+   * that needs standings. Lost on hibernation,
+   * which is fine: a Room with unflushed clicks never hibernates, so a
+   * reload misses nothing.
    */
   #standings: Map<string, Player> | undefined;
   /** Sum of every count in #standings; only meaningful once it's loaded. */
@@ -387,16 +391,11 @@ export class Room extends DurableObject<Env> {
     const name = normalizePlayerName(requested);
     if (name === null) return { ok: false, error: "invalid_name" };
 
-    // Renames are rare, so they write through. The row is written anyway,
-    // so the pending count rides along at no extra cost.
+    // Renames are rare, so they write through, saving a player who hasn't
+    // clicked yet so the name lasts. The row is written anyway, so the
+    // pending count rides along at no extra cost.
     const player = this.#load(id);
-    this.ctx.storage.sql.exec(
-      "UPDATE players SET name = ?, count = ?, updated_at = ? WHERE id = ?",
-      name,
-      player.count,
-      Date.now(),
-      id,
-    );
+    this.#save({ ...player, name }, Date.now());
     player.name = name;
     this.#dirty.delete(player);
     this.#wrote();
@@ -534,14 +533,7 @@ export class Room extends DurableObject<Env> {
       const written = this.ctx.storage.transactionSync(() => {
         const now = Date.now();
         let rows = 0;
-        for (const player of players) {
-          rows += this.ctx.storage.sql.exec(
-            "UPDATE players SET count = ?, updated_at = ? WHERE id = ?",
-            player.count,
-            now,
-            player.id,
-          ).rowsWritten;
-        }
+        for (const player of players) rows += this.#save(player, now);
         return rows;
       });
       for (const player of players) {
@@ -578,6 +570,24 @@ export class Room extends DurableObject<Env> {
     if (this.#failures > 0 || this.#dirty.size === 0) this.#cancelFlush();
     this.#failures = 0;
     if (this.#dirty.size > 0) this.#scheduleFlush();
+  }
+
+  /**
+   * Writes a player's row and returns the rows written: 1 to update it, or
+   * 2 (the row and its primary-key index entry) for a player's first save.
+   */
+  #save(player: Player, now: number): number {
+    return this.ctx.storage.sql.exec(
+      `INSERT INTO players (id, name, count, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET
+         name = excluded.name,
+         count = excluded.count,
+         updated_at = excluded.updated_at`,
+      player.id,
+      player.name,
+      player.count,
+      now,
+    ).rowsWritten;
   }
 
   /**
@@ -631,24 +641,19 @@ export class Room extends DurableObject<Env> {
   }
 
   /**
-   * The player's cache entry, read from SQLite (and created there if new)
-   * on first use. Every read goes through here, so callers always see the
+   * The player's cache entry, read from SQLite on first use, or a new
+   * player with no row yet: `#save` writes one on their first click or
+   * rename. Every read goes through here, so callers always see the
    * in-memory count, never a row that has not been flushed yet.
    */
   #load(id: string): Player {
     const cached = this.#players.get(id);
     if (cached) return cached;
 
-    // Writes rows only for a new player; an ignored insert writes none.
-    this.ctx.storage.sql.exec(
-      "INSERT OR IGNORE INTO players (id, name, count, updated_at) VALUES (?, ?, 0, ?)",
-      id,
-      defaultPlayerName(id),
-      Date.now(),
-    );
-    const player = this.ctx.storage.sql
+    const [row] = this.ctx.storage.sql
       .exec<PlayerRow>("SELECT id, name, count FROM players WHERE id = ?", id)
-      .one();
+      .toArray();
+    const player = row ?? { id, name: defaultPlayerName(id), count: 0 };
     this.#players.set(id, player);
     return player;
   }
