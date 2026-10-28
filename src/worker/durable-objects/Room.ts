@@ -424,10 +424,14 @@ export class Room extends DurableObject<Env> {
     const name = normalizePlayerName(requested);
     if (name === null) return { ok: false, error: "invalid_name" };
 
+    // A rename to the current name changes nothing, so it writes nothing;
+    // otherwise a client could save a zero-click row without choosing a name.
+    const player = this.#load(id);
+    if (name === player.name) return { ok: true, player: { ...player } };
+
     // Renames are rare, so they write through, saving a player who hasn't
     // clicked yet so the name lasts. The row is written anyway, so the
     // pending count rides along at no extra cost.
-    const player = this.#load(id);
     this.#save({ ...player, name }, Date.now());
     player.name = name;
     this.#dirty.delete(player);
