@@ -547,6 +547,30 @@ describe("Room saved players", () => {
     });
   });
 
+  it("writes nothing for a rename to the current name", async () => {
+    const stub = room();
+    const visitor = newPlayerId();
+    const saved = newPlayerId();
+    await addSavedPlayer(stub, saved, { name: "Same Name" });
+
+    await runInDurableObject(stub, (instance, state) => {
+      const rowsWritten = trackRowsWritten(state);
+      instance.increment(saved); // pending, so a write would carry it
+
+      expect(instance.rename(visitor, defaultPlayerName(visitor))).toEqual({
+        ok: true,
+        player: { id: visitor, name: defaultPlayerName(visitor), count: 0 },
+      });
+      expect(instance.rename(saved, " Same  Name ")).toMatchObject({
+        ok: true,
+        player: { name: "Same Name", count: 1 },
+      });
+      expect(rowsWritten()).toBe(0);
+      expect(storedCount(state, visitor)).toBeNull();
+      expect(storedCount(state, saved)).toBe(0); // still left for the flush
+    });
+  });
+
   it("arms the daily prune when the Room starts", async () => {
     const stub = room();
     const before = Date.now();
