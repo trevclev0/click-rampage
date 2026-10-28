@@ -171,8 +171,15 @@ export class Room extends DurableObject<Env> {
         )
       `);
       // The prune re-arms itself each run; this starts it once per Room.
-      if ((await ctx.storage.getAlarm()) === null) {
-        await ctx.storage.setAlarm(Date.now() + PRUNE_INTERVAL_MS);
+      // Setting an alarm is a write, so it can fail (say, past the daily
+      // write cap). That's logged, not thrown: a throw here would stop the
+      // Room from starting, and the next wake tries again.
+      try {
+        if ((await ctx.storage.getAlarm()) === null) {
+          await ctx.storage.setAlarm(Date.now() + PRUNE_INTERVAL_MS);
+        }
+      } catch (error) {
+        logRoomError("room_prune_arm_failed", error);
       }
     });
   }
