@@ -556,6 +556,27 @@ describe("Room saved players", () => {
     expect(alarm).toBeLessThanOrEqual(Date.now() + PRUNE_INTERVAL_MS);
   });
 
+  it("still starts the Room when arming the prune fails", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Fails every Room's next setAlarm, as the daily write cap would.
+    await runInDurableObject(room(), (_, state) => {
+      vi.spyOn(
+        Object.getPrototypeOf(state.storage),
+        "setAlarm",
+      ).mockRejectedValue(new Error("write limit reached"));
+    });
+    const stub = room();
+    const id = newPlayerId();
+
+    expect(await stub.getOrCreatePlayer(id)).toMatchObject({ id, count: 0 });
+    expect(errors).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(errors.mock.calls[0]?.[0]))).toMatchObject({
+      event: "room_prune_arm_failed",
+      message: expect.stringContaining("write limit reached"),
+    });
+    expect(await readAlarm(stub)).toBeNull();
+  });
+
   it("prunes zero-click rows untouched for 30 days, then re-arms", async () => {
     const stub = room();
     const now = Date.now();
