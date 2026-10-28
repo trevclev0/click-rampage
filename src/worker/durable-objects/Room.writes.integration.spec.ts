@@ -1,5 +1,6 @@
 import { evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
+import { defaultPlayerName } from "@shared/player";
 import type { ServerMessage } from "@shared/protocol";
 import {
   connectToRoom,
@@ -36,15 +37,39 @@ const advanceTime = (stub: RoomStub, ms: number) =>
     vi.advanceTimersByTime(ms);
   });
 
-/** The count SQLite holds for a player, whatever the Room has in memory. */
-function storedCount(state: DurableObjectState, id: string): number {
-  return state.storage.sql
+/**
+ * The count SQLite holds for a player, whatever the Room has in memory, or
+ * null if they have no row.
+ */
+function storedCount(state: DurableObjectState, id: string): number | null {
+  const [row] = state.storage.sql
     .exec<{ count: number }>("SELECT count FROM players WHERE id = ?", id)
-    .one().count;
+    .toArray();
+  return row?.count ?? null;
 }
 
 const readStoredCount = (stub: RoomStub, id: string) =>
   runInDurableObject(stub, (_, state) => storedCount(state, id));
+
+/**
+ * Writes a player's row directly, as an earlier visit would have. Batching
+ * tests start from saved players, so each flush updates a row (1 row
+ * written) instead of creating one (2).
+ */
+const addSavedPlayer = (
+  stub: RoomStub,
+  id: string,
+  { name = "Returning", count = 0, updatedAt = Date.now() } = {},
+) =>
+  runInDurableObject(stub, (_, state) => {
+    state.storage.sql.exec(
+      "INSERT INTO players (id, name, count, updated_at) VALUES (?, ?, ?, ?)",
+      id,
+      name,
+      count,
+      updatedAt,
+    );
+  });
 
 /**
  * Sums rowsWritten over every SQL statement run from now on. It spies on
@@ -75,7 +100,7 @@ describe("Room write batching", () => {
   it("writes 100 accepted increments as a single row", async () => {
     const stub = room();
     const id = newPlayerId();
-    await stub.getOrCreatePlayer(id); // creating the row is not a click
+    await addSavedPlayer(stub, id);
 
     // One synchronous block: no flush timer can fire part-way through.
     await runInDurableObject(stub, (instance, state) => {
@@ -95,6 +120,7 @@ describe("Room write batching", () => {
   it("holds socket clicks in memory until the flush timer fires", async () => {
     const stub = room();
     const id = newPlayerId();
+    await addSavedPlayer(stub, id);
     const socket = await connectToRoom(stub, id);
     await nextWelcome(socket);
     const rowsWritten = await runInDurableObject(stub, (_, state) =>
@@ -122,6 +148,7 @@ describe("Room write batching", () => {
   it("flushes on a fixed cadence, one row per dirty player", async () => {
     const stub = room();
     const id = newPlayerId();
+    await addSavedPlayer(stub, id);
     const idle = await connectToRoom(stub, newPlayerId()); // cached, never clicks
     await nextWelcome(idle);
     const socket = await connectToRoom(stub, id);
@@ -257,6 +284,8 @@ describe("Room write batching", () => {
     const stub = room();
     const clicker = newPlayerId();
     const leaver = newPlayerId();
+    await addSavedPlayer(stub, clicker);
+    await addSavedPlayer(stub, leaver);
     const socket = await connectToRoom(stub, clicker);
     await nextWelcome(socket);
     const visitor = await connectToRoom(stub, leaver);
@@ -285,6 +314,7 @@ describe("Room write batching", () => {
   it("keeps counts dirty when a flush fails, then retries with backoff", async () => {
     const stub = room();
     const id = newPlayerId();
+    await addSavedPlayer(stub, id);
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const logged = (call: number) =>
       JSON.parse(String(errors.mock.calls[call]?.[0]));
@@ -382,6 +412,8 @@ describe("Room write batching", () => {
     const stub = room();
     const a = newPlayerId();
     const b = newPlayerId();
+    await addSavedPlayer(stub, a);
+    await addSavedPlayer(stub, b);
     vi.spyOn(console, "error").mockImplementation(() => {});
     freezeTime(); // so the failed flush's retry never runs
 
@@ -402,6 +434,7 @@ describe("Room write batching", () => {
   it("reports unflushed counts in welcome and player_joined", async () => {
     const stub = room();
     const id = newPlayerId();
+    await addSavedPlayer(stub, id);
     const watcher = await connectToRoom(stub, newPlayerId());
     await nextWelcome(watcher);
     freezeTime();
@@ -438,6 +471,69 @@ describe("Room write batching", () => {
       // The rename's row write carried the count, so nothing is pending.
       expect(storedCount(state, id)).toBe(2);
       expect(instance.flush()).toBe(0);
+    });
+  });
+});
+
+describe("Room saved players", () => {
+  it("writes no rows for a visitor who never clicks or renames", async () => {
+    const stub = room();
+    const id = newPlayerId();
+    const rowsWritten = await runInDurableObject(stub, (_, state) =>
+      trackRowsWritten(state),
+    );
+    const watcher = await connectToRoom(stub, newPlayerId());
+    await nextWelcome(watcher);
+
+    const visitor = await connectToRoom(stub, id);
+    expect(await nextWelcome(visitor)).toMatchObject({
+      you: { id, name: defaultPlayerName(id), count: 0 },
+    });
+    await drain(visitor);
+    visitor.close();
+    await nextOfType(watcher, "player_left");
+
+    expect(rowsWritten()).toBe(0);
+    expect(await readStoredCount(stub, id)).toBeNull();
+  });
+
+  it("saves a player on their first click, then updates their row", async () => {
+    const name = crypto.randomUUID();
+    const stub = env.ROOM.getByName(name);
+    const id = newPlayerId();
+
+    await runInDurableObject(stub, (instance, state) => {
+      const rowsWritten = trackRowsWritten(state);
+      instance.increment(id);
+      instance.increment(id);
+      expect(instance.flush()).toBe(2); // the row and its key index entry
+      instance.increment(id);
+      expect(instance.flush()).toBe(1);
+      expect(rowsWritten()).toBe(3);
+      expect(storedCount(state, id)).toBe(3);
+    });
+
+    await evictDurableObject(stub);
+    expect(await env.ROOM.getByName(name).getOrCreatePlayer(id)).toEqual({
+      id,
+      name: defaultPlayerName(id),
+      count: 3,
+    });
+  });
+
+  it("saves a renamer who never clicks", async () => {
+    const name = crypto.randomUUID();
+    const stub = env.ROOM.getByName(name);
+    const id = newPlayerId();
+
+    await stub.rename(id, "Lurker");
+    expect(await readStoredCount(stub, id)).toBe(0);
+
+    await evictDurableObject(stub);
+    expect(await env.ROOM.getByName(name).getOrCreatePlayer(id)).toEqual({
+      id,
+      name: "Lurker",
+      count: 0,
     });
   });
 });
