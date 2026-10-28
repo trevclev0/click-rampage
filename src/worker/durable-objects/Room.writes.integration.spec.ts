@@ -1,4 +1,8 @@
-import { evictDurableObject, runInDurableObject } from "cloudflare:test";
+import {
+  evictDurableObject,
+  runDurableObjectAlarm,
+  runInDurableObject,
+} from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { defaultPlayerName } from "@shared/player";
 import type { ServerMessage } from "@shared/protocol";
@@ -14,6 +18,8 @@ import {
   LEADERBOARD_INTERVAL_MS,
   MAX_FLUSH_RETRY_MS,
   MAX_INCREMENTS_PER_SECOND,
+  PRUNE_AFTER_MS,
+  PRUNE_INTERVAL_MS,
 } from "./Room";
 
 // Each test uses its own Room instance (unique name) so dirty counts and
@@ -70,6 +76,10 @@ const addSavedPlayer = (
       updatedAt,
     );
   });
+
+/** When the Room's alarm is set to fire, or null if none is set. */
+const readAlarm = (stub: RoomStub) =>
+  runInDurableObject(stub, (_, state) => state.storage.getAlarm());
 
 /**
  * Sums rowsWritten over every SQL statement run from now on. It spies on
@@ -535,6 +545,76 @@ describe("Room saved players", () => {
       name: "Lurker",
       count: 0,
     });
+  });
+
+  it("arms the daily prune when the Room starts", async () => {
+    const stub = room();
+    const before = Date.now();
+    const alarm = await readAlarm(stub);
+
+    expect(alarm).toBeGreaterThanOrEqual(before + PRUNE_INTERVAL_MS);
+    expect(alarm).toBeLessThanOrEqual(Date.now() + PRUNE_INTERVAL_MS);
+  });
+
+  it("prunes zero-click rows untouched for 30 days, then re-arms", async () => {
+    const stub = room();
+    const now = Date.now();
+    const stale = newPlayerId();
+    const recent = newPlayerId();
+    const clicker = newPlayerId();
+    await addSavedPlayer(stub, stale, { updatedAt: now - PRUNE_AFTER_MS - 1 });
+    await addSavedPlayer(stub, recent, {
+      updatedAt: now - PRUNE_AFTER_MS + 60_000,
+    });
+    await addSavedPlayer(stub, clicker, { count: 5, updatedAt: 0 });
+
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+
+    expect(await readStoredCount(stub, stale)).toBeNull();
+    expect(await readStoredCount(stub, recent)).toBe(0);
+    expect(await readStoredCount(stub, clicker)).toBe(5);
+    expect(await readAlarm(stub)).toBeGreaterThanOrEqual(
+      now + PRUNE_INTERVAL_MS,
+    );
+  });
+
+  it("saves a pruned player again, name and all, on their next click", async () => {
+    const stub = room();
+    const id = newPlayerId();
+    await addSavedPlayer(stub, id, { name: "Old Timer", updatedAt: 0 });
+
+    await runInDurableObject(stub, (instance, state) => {
+      instance.increment(id); // cached from the row, click pending
+      instance.prune();
+      expect(storedCount(state, id)).toBeNull();
+
+      instance.flush();
+      expect(storedCount(state, id)).toBe(1);
+    });
+    expect(await stub.getOrCreatePlayer(id)).toMatchObject({
+      name: "Old Timer",
+    });
+  });
+
+  it("logs a failed prune and still runs the next day", async () => {
+    const stub = room();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runInDurableObject(stub, (_, state) => {
+      state.storage.sql.exec("ALTER TABLE players RENAME TO players_away");
+    });
+    const before = Date.now();
+
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+
+    expect(errors).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(errors.mock.calls[0]?.[0]))).toMatchObject({
+      level: "error",
+      event: "room_prune_failed",
+      message: expect.stringContaining("no such table"),
+    });
+    expect(await readAlarm(stub)).toBeGreaterThanOrEqual(
+      before + PRUNE_INTERVAL_MS,
+    );
   });
 });
 
