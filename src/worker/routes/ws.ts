@@ -1,3 +1,4 @@
+import { sanitizeErrorText } from "@shared/sanitizeError";
 import {
   PLAYER_ID_HEADER,
   ROOM_NAME,
@@ -6,10 +7,13 @@ import { playerMiddleware } from "@worker/middleware/player";
 import type { AppEnv } from "@worker/types";
 import { Hono } from "hono";
 
+const LOOPBACK = new Set(["127.0.0.1", "::1"]);
+
 /**
  * `GET /api/ws` — upgrades to a WebSocket served by the global Room.
  * Identity comes from the player cookie (set by playerMiddleware) and is
  * forwarded in a header the Worker overwrites, so clients can't spoof it.
+ * Upgrades are rate-limited per address.
  */
 export const wsRouter = new Hono<AppEnv>().get(
   "/",
@@ -22,6 +26,21 @@ export const wsRouter = new Hono<AppEnv>().get(
     // cross-site WebSocket hijacking or a non-browser client.
     if (c.req.header("origin") !== new URL(c.req.url).origin) {
       return c.json({ status: "error", code: "FORBIDDEN" }, 403);
+    }
+
+    // Every upgrade costs a Durable Object request, so an address opening
+    // them in a loop is stopped here, before the Room is reached. The limit
+    // (wrangler.jsonc) is per address, which a classroom or office shares.
+    // Cloudflare always sets the header to the real client address, so a
+    // missing or loopback one is local dev or a test, where every
+    // connection would share a single allowance.
+    const address = c.req.header("cf-connecting-ip");
+    if (
+      address !== undefined &&
+      !LOOPBACK.has(address) &&
+      !(await allowConnection(c.env.WS_RATE_LIMITER, address))
+    ) {
+      return c.json({ status: "error", code: "RATE_LIMITED" }, 429);
     }
 
     const headers = new Headers(c.req.raw.headers);
@@ -45,3 +64,29 @@ export const wsRouter = new Hono<AppEnv>().get(
     });
   },
 );
+
+/**
+ * Whether `address` may open another socket. A limiter that fails lets the
+ * connection through: the Room has its own limits, and an outage in the
+ * limiter shouldn't take the game down with it.
+ */
+async function allowConnection(
+  limiter: RateLimit,
+  address: string,
+): Promise<boolean> {
+  try {
+    return (await limiter.limit({ key: address })).success;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        event: "ws_rate_limit_failed",
+        message: sanitizeErrorText(
+          error instanceof Error ? error.message : error,
+        ),
+      }),
+    );
+    return true;
+  }
+}
