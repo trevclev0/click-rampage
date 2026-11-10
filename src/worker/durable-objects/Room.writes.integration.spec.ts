@@ -676,7 +676,8 @@ describe("Room rate limit", () => {
     await nextWelcome(b);
     freezeTime();
 
-    for (let i = 0; i < 100; i++) {
+    // Well over the click limit, and under the flood cut-off.
+    for (let i = 0; i < 50; i++) {
       a.send({ type: "increment" });
       b.send({ type: "increment" });
     }

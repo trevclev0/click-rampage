@@ -216,6 +216,24 @@ describe("RenameDialog", () => {
     expect(save()).toBeEnabled();
   });
 
+  it("shows why a rename was refused for coming too fast", async () => {
+    const { user } = await openDialog();
+    await user.clear(input());
+    await user.type(input(), "Again");
+    await user.click(save());
+
+    receive({
+      type: "error",
+      code: "rename_rate_limited",
+      message: "That's a lot of renames. Try again in a minute.",
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That's a lot of renames. Try again in a minute.",
+    );
+    expect(save()).toBeEnabled();
+  });
+
   it("ends the save on a rejection with no message", async () => {
     const { user } = await openDialog();
     await user.clear(input());

@@ -21,6 +21,24 @@ export const MAX_RENAME_UNITS = 200;
  */
 export const PING_INTERVAL_MS = 30_000;
 
+/**
+ * Codes the Room closes a socket with when the client should stay
+ * disconnected instead of reconnecting. In the range (4000-4999) the
+ * WebSocket spec leaves to applications.
+ */
+export const CLOSE_CODES = {
+  /** The player sent far more messages than the game ever needs. */
+  flood: 4008,
+  /** The player opened more tabs than the Room allows; the oldest closes. */
+  tooManyTabs: 4009,
+} as const;
+
+const terminalCloseCodes: readonly number[] = Object.values(CLOSE_CODES);
+
+/** Whether a close code means "don't reconnect". */
+export const isTerminalCloseCode = (code: number) =>
+  terminalCloseCodes.includes(code);
+
 const encoder = new TextEncoder();
 
 const playerSchema = z.object({
@@ -45,7 +63,11 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ping"), t: z.number() }),
 ]);
 
-export const errorCodes = ["invalid_message", "invalid_name"] as const;
+export const errorCodes = [
+  "invalid_message",
+  "invalid_name",
+  "rename_rate_limited",
+] as const;
 
 export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({

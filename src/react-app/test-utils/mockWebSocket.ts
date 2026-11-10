@@ -21,7 +21,7 @@ export class MockWebSocket {
   sent: unknown[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code: number }) => void) | null = null;
 
   constructor(readonly url: string) {
     MockWebSocket.instances.push(this);
@@ -31,10 +31,10 @@ export class MockWebSocket {
     this.sent.push(JSON.parse(data));
   }
 
-  close() {
+  close(code = 1000) {
     if (this.readyState === MockWebSocket.CLOSED) return;
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code });
   }
 
   // Test helpers.
@@ -47,8 +47,8 @@ export class MockWebSocket {
     this.onmessage?.({ data: JSON.stringify(message) });
   }
 
-  /** The server or network drops the connection. */
-  drop() {
-    this.close();
+  /** The server or network drops the connection, 1006 unless it says why. */
+  drop(code = 1006) {
+    this.close(code);
   }
 }
