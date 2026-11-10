@@ -1,5 +1,6 @@
 import {
   type ClientMessage,
+  isTerminalCloseCode,
   PING_INTERVAL_MS,
   parseServerMessage,
 } from "@shared/protocol";
@@ -133,7 +134,18 @@ export function useRoomSocket() {
         }
         dispatch({ type: "message", message, receivedAt: Date.now() });
       };
-      socket.onclose = handleClose;
+      socket.onclose = (event) => {
+        // The Room closed this socket on purpose (too many tabs, or a
+        // flood), and a reconnect would only get the same answer. Live
+        // goes off instead; the player can switch it back on.
+        if (!closed && isTerminalCloseCode(event.code)) {
+          stopped = true;
+          handleClose();
+          setEnabled(false);
+          return;
+        }
+        handleClose();
+      };
     };
 
     // Adopt a socket that the previous run parked mid-handshake, if any.

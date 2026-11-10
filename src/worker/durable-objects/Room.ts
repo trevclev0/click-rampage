@@ -5,6 +5,7 @@ import {
   type Player,
 } from "@shared/player";
 import {
+  CLOSE_CODES,
   type LeaderboardMessage,
   PING_INTERVAL_MS,
   parseClientMessage,
@@ -20,6 +21,30 @@ import { type RankedPlayer, rankStandings } from "./standings";
  * extra ones are dropped.
  */
 export const MAX_INCREMENTS_PER_SECOND = 20;
+
+/**
+ * Messages of any kind allowed per player per second, across all their
+ * sockets. Going over closes every socket they have: a browser never gets
+ * near this, and each message a script sends is billed whether or not the
+ * Room acts on it.
+ */
+export const MAX_MESSAGES_PER_SECOND = 200;
+
+/**
+ * Renames allowed per player per minute. Each one that changes the name
+ * writes a row and is broadcast to everyone, so unlike clicks they can't be
+ * batched.
+ */
+export const MAX_RENAMES_PER_MINUTE = 5;
+
+/** Length of the window {@link MAX_RENAMES_PER_MINUTE} counts in. */
+const RENAME_WINDOW_MS = 60_000;
+
+/**
+ * Open sockets (tabs) allowed per player. One more closes the oldest, so a
+ * single cookie can't hold an unbounded number of connections.
+ */
+export const MAX_SOCKETS_PER_PLAYER = 5;
 
 /**
  * Longest a click lives only in memory before the Room writes it to SQLite.
@@ -71,10 +96,29 @@ type SocketAttachment = {
    * players in the order clients saw `player_joined`.
    */
   joinSeq: number;
+  /**
+   * Order this socket opened in among the player's sockets, so the tab
+   * limit can find the oldest.
+   */
+  tabSeq: number;
   /** When (ms) the client last pinged, or connected if it hasn't yet. */
   lastPing: number;
-  /** Set once a sweep has handled this socket as gone. */
+  /**
+   * The player's rename window, copied to every socket of theirs. Kept
+   * here rather than in a field so that hibernation, which an idle minute
+   * allows, doesn't hand out a fresh allowance.
+   */
+  renames?: RenameWindow;
+  /** Set once the Room has closed this socket and handled it as gone. */
   swept?: true;
+};
+
+/** A player's fixed one-minute rename window. */
+type RenameWindow = {
+  /** Start (ms) of the window. */
+  start: number;
+  /** Renames attempted in it. */
+  count: number;
 };
 
 /** A player's fixed one-second rate-limit window. */
@@ -83,6 +127,8 @@ type RateWindow = {
   start: number;
   /** Increments accepted in it. */
   count: number;
+  /** Messages of any kind received in it. */
+  messages: number;
 };
 
 type PlayerRow = Pick<Player, "id" | "name" | "count">;
@@ -198,11 +244,21 @@ export class Room extends DurableObject<Env> {
     // A player is "joining" only when this is their first open socket;
     // another tab for an already-online player is silent and keeps their
     // place in join order.
-    const [tab] = this.#openSockets(playerId);
+    const tabs = this.#openSockets(playerId);
+    const [tab] = tabs.map(attachmentOf);
     const alreadyOnline = tab !== undefined;
-    const joinSeq = alreadyOnline
-      ? (tab.deserializeAttachment() as SocketAttachment).joinSeq
-      : this.#nextJoinSeq();
+    const joinSeq = alreadyOnline ? tab.joinSeq : this.#nextJoinSeq();
+    const tabSeq =
+      Math.max(-1, ...tabs.map((ws) => attachmentOf(ws).tabSeq)) + 1;
+
+    // The oldest tab makes room. Its client is told not to reconnect, or
+    // the tabs would take turns closing each other forever.
+    if (tabs.length >= MAX_SOCKETS_PER_PLAYER) {
+      const oldest = tabs.reduce((a, b) =>
+        attachmentOf(a).tabSeq <= attachmentOf(b).tabSeq ? a : b,
+      );
+      this.#drop(oldest, CLOSE_CODES.tooManyTabs, "Too many tabs");
+    }
 
     const { 0: client, 1: server } = new WebSocketPair();
     // acceptWebSocket (not server.accept()) opts into hibernation: idle
@@ -211,7 +267,9 @@ export class Room extends DurableObject<Env> {
     server.serializeAttachment({
       playerId,
       joinSeq,
+      tabSeq,
       lastPing: Date.now(),
+      renames: tab?.renames,
     } satisfies SocketAttachment);
 
     const you = this.getOrCreatePlayer(playerId);
@@ -233,6 +291,15 @@ export class Room extends DurableObject<Env> {
     // client closing on its own is different: its last message still counts.
     if (attachment.swept) return;
 
+    const { playerId } = attachment;
+    // Before parsing: junk is billed like any other message.
+    if (!this.#allowMessage(playerId)) {
+      for (const socket of this.#openSockets(playerId)) {
+        this.#drop(socket, CLOSE_CODES.flood, "Too many messages");
+      }
+      return;
+    }
+
     const message = parseClientMessage(raw);
     if (message === null) {
       send(ws, {
@@ -242,8 +309,6 @@ export class Room extends DurableObject<Env> {
       });
       return;
     }
-
-    const { playerId } = attachment;
 
     switch (message.type) {
       case "ping":
@@ -264,6 +329,14 @@ export class Room extends DurableObject<Env> {
         return;
       }
       case "rename": {
+        if (!this.#allowRename(playerId)) {
+          send(ws, {
+            type: "error",
+            code: "rename_rate_limited",
+            message: "That's a lot of renames. Try again in a minute.",
+          });
+          return;
+        }
         const result = this.rename(playerId, message.name);
         if (!result.ok) {
           send(ws, {
@@ -363,25 +436,62 @@ export class Room extends DurableObject<Env> {
     }
     for (const ws of this.ctx.getWebSockets()) {
       if (ws.readyState !== WebSocket.OPEN || !isStale(ws)) continue;
-      try {
-        ws.close(1001, "No ping");
-      } catch {
-        // Already closed.
-      }
-      this.#handleDisconnect(ws);
-      // Marked so the close a live client answers with isn't handled twice.
-      ws.serializeAttachment({ ...ws.deserializeAttachment(), swept: true });
+      this.#drop(ws, 1001, "No ping");
     }
+  }
+
+  /** Closes a socket from the Room's side and handles it as a disconnect. */
+  #drop(ws: WebSocket, code: number, reason: string) {
+    try {
+      ws.close(code, reason);
+    } catch {
+      // Already closed.
+    }
+    this.#handleDisconnect(ws);
+    // Marked so the close a live client answers with isn't handled twice.
+    ws.serializeAttachment({ ...attachmentOf(ws), swept: true });
+  }
+
+  /** The player's current one-second window, started fresh if it expired. */
+  #rateWindow(playerId: string): RateWindow {
+    const now = Date.now();
+    let window = this.#rateWindows.get(playerId);
+    if (!window || now - window.start >= 1000) {
+      window = { start: now, count: 0, messages: 0 };
+      this.#rateWindows.set(playerId, window);
+    }
+    return window;
+  }
+
+  /** Counts a message; returns false once the player is flooding. */
+  #allowMessage(playerId: string): boolean {
+    const window = this.#rateWindow(playerId);
+    window.messages += 1;
+    return window.messages <= MAX_MESSAGES_PER_SECOND;
+  }
+
+  /**
+   * Counts a rename attempt, valid or not, in the player's fixed one-minute
+   * window; returns false when over the cap.
+   */
+  #allowRename(playerId: string): boolean {
+    const now = Date.now();
+    const sockets = this.#openSockets(playerId);
+    let window = sockets.map((ws) => attachmentOf(ws).renames).find(Boolean);
+    if (!window || now - window.start >= RENAME_WINDOW_MS) {
+      window = { start: now, count: 0 };
+    }
+    if (window.count >= MAX_RENAMES_PER_MINUTE) return false;
+    const renames = { ...window, count: window.count + 1 };
+    for (const ws of sockets) {
+      ws.serializeAttachment({ ...attachmentOf(ws), renames });
+    }
+    return true;
   }
 
   /** Fixed one-second window per player; returns false when over the cap. */
   #allowIncrement(playerId: string): boolean {
-    const now = Date.now();
-    let window = this.#rateWindows.get(playerId);
-    if (!window || now - window.start >= 1000) {
-      window = { start: now, count: 0 };
-      this.#rateWindows.set(playerId, window);
-    }
+    const window = this.#rateWindow(playerId);
     if (window.count >= MAX_INCREMENTS_PER_SECOND) return false;
     window.count += 1;
     return true;
@@ -710,6 +820,9 @@ export class Room extends DurableObject<Env> {
     return player;
   }
 }
+
+const attachmentOf = (ws: WebSocket) =>
+  ws.deserializeAttachment() as SocketAttachment;
 
 function send(ws: WebSocket, message: ServerMessage) {
   // A socket that's closing can't take a reply, and sending would throw.

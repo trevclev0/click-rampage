@@ -20,6 +20,14 @@ export default defineConfig({
         durableObjects: {
           ROOM: { className: "Room", useSQLite: true },
         },
+        // Mirrors wrangler.jsonc. Never consulted here: tests connect with
+        // no client address, which the route doesn't limit.
+        ratelimits: {
+          WS_RATE_LIMITER: {
+            namespace_id: "1",
+            simple: { limit: 30, period: 60 },
+          },
+        },
       },
     }),
   ],

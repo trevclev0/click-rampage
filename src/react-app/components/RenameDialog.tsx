@@ -31,7 +31,7 @@ function draftError(cleaned: string, length: number): string | null {
 
 /** What to show inline when the room answers a save with an error. */
 const rejectionMessage = (error: ServerError) =>
-  error.code === "invalid_name" && error.message
+  error.code !== "invalid_message" && error.message
     ? error.message
     : "That name couldn't be saved.";
 

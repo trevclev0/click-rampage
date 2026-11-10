@@ -1,4 +1,4 @@
-import { PING_INTERVAL_MS } from "@shared/protocol";
+import { CLOSE_CODES, PING_INTERVAL_MS } from "@shared/protocol";
 import { MockWebSocket } from "@test-utils/mockWebSocket";
 import { act, renderHook } from "@testing-library/react";
 import { StrictMode } from "react";
@@ -116,6 +116,24 @@ describe("useRoomSocket", () => {
     expect(MockWebSocket.instances).toHaveLength(3);
   });
 
+  it.each([
+    ["too many tabs", CLOSE_CODES.tooManyTabs],
+    ["flooding", CLOSE_CODES.flood],
+  ])("stays disconnected when the Room closes it for %s", (_, code) => {
+    const { result, socket } = connect();
+
+    act(() => socket.drop(code));
+
+    expect(result.current.status).toBe("disconnected");
+    expect(result.current.enabled).toBe(false);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    // The player can still switch Live back on.
+    act(() => result.current.connect());
+    expect(MockWebSocket.instances).toHaveLength(2);
+  });
+
   it("disconnect() closes without retrying; connect() reopens", () => {
     const { result, socket } = connect();
     expect(result.current.enabled).toBe(true);
@@ -230,7 +248,7 @@ describe("useRoomSocket", () => {
     act(() => result.current.disconnect());
     act(() => result.current.connect());
     act(() => MockWebSocket.latest().open());
-    act(() => lateClose?.());
+    act(() => lateClose?.({ code: CLOSE_CODES.tooManyTabs }));
 
     expect(result.current.send({ type: "increment" })).toBe(true);
     expect(MockWebSocket.latest().sent.at(-1)).toEqual({ type: "increment" });
